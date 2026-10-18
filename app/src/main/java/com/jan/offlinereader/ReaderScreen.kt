@@ -6,7 +6,6 @@ import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.*
 import androidx.compose.foundation.gestures.detectTapGestures
-import androidx.compose.foundation.gestures.detectTransformGestures
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.*
 import androidx.compose.material.icons.Icons
@@ -19,12 +18,10 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clipToBounds
-import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ColorFilter
 import androidx.compose.ui.graphics.ColorMatrix
 import androidx.compose.ui.graphics.asImageBitmap
-import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
@@ -207,22 +204,7 @@ fun ReaderScreen(book: Book, vm: ReaderViewModel, preferences: Preferences) {
     }
     zoomPage?.let { index ->
         Dialog(onDismissRequest = { zoomPage = null }, properties = DialogProperties(usePlatformDefaultWidth = false)) {
-            var scale by remember { mutableFloatStateOf(1f) }
-            var pan by remember { mutableStateOf(Offset.Zero) }
-            Box(Modifier.fillMaxSize().background(Color(0xFF151715)).clipToBounds()) {
-                Box(Modifier.fillMaxSize().pointerInput(Unit) {
-                    detectTransformGestures { _, delta, zoom, _ ->
-                        scale = (scale * zoom).coerceIn(1f, 5f)
-                        val maxX = size.width * (scale - 1) / 2
-                        val maxY = size.height * (scale - 1) / 2
-                        pan = Offset((pan.x + delta.x).coerceIn(-maxX, maxX), (pan.y + delta.y).coerceIn(-maxY, maxY))
-                    }
-                }.graphicsLayer(scaleX = scale, scaleY = scale, translationX = pan.x, translationY = pan.y), contentAlignment = Alignment.Center) {
-                    PdfPage(pdf!!, index, ratios[index], preferences.theme, Modifier.fillMaxWidth())
-                }
-                FilledTonalButton(onClick = { zoomPage = null }, modifier = Modifier.align(Alignment.TopEnd).padding(16.dp)) { Text("Done") }
-                Text("Pinch to zoom · Drag to move", Modifier.align(Alignment.BottomCenter).padding(24.dp), color = Color.White)
-            }
+            PdfZoom(pdf!!, index, ratios[index], preferences.theme, onDone = { zoomPage = null })
         }
     }
 }
@@ -251,7 +233,7 @@ private fun TextBlock(book: Book, block: Block, initial: String?, vm: ReaderView
         color = MaterialTheme.colorScheme.onBackground)
 }
 @Composable
-private fun PdfPage(source: PdfSource, index: Int, ratio: Float, theme: String, modifier: Modifier) {
+internal fun PdfPage(source: PdfSource, index: Int, ratio: Float, theme: String, modifier: Modifier) {
     var failed by remember { mutableStateOf(false) }
     BoxWithConstraints(modifier.aspectRatio(1f / ratio).background(if (theme == "Dark") Color(0xFF222222) else Color.White)) {
         val width = with(LocalDensity.current) { maxWidth.roundToPx() }
@@ -260,15 +242,17 @@ private fun PdfPage(source: PdfSource, index: Int, ratio: Float, theme: String, 
             catch (e: CancellationException) { throw e }
             catch (_: Exception) { failed = true }
         }
-        val filter = when (theme) {
-            "Dark" -> ColorFilter.colorMatrix(ColorMatrix(floatArrayOf(-.85f,0f,0f,0f,240f, 0f,-.85f,0f,0f,240f, 0f,0f,-.85f,0f,240f, 0f,0f,0f,1f,0f)))
-            "Sepia" -> ColorFilter.colorMatrix(ColorMatrix(floatArrayOf(.96f,0f,0f,0f,0f, 0f,.93f,0f,0f,0f, 0f,0f,.86f,0f,0f, 0f,0f,0f,1f,0f)))
-            else -> null
-        }
+        val filter = pdfColorFilter(theme)
         bitmap?.let { Image(it.asImageBitmap(), "Page ${index + 1}", Modifier.fillMaxSize(), contentScale = ContentScale.FillBounds, colorFilter = filter) }
             ?: if (failed) Text("Page ${index + 1} couldn't be rendered. Try reopening this book.", Modifier.align(Alignment.Center).padding(20.dp)) else CircularProgressIndicator(Modifier.align(Alignment.Center))
     }
 }
+internal fun pdfColorFilter(theme: String): ColorFilter? = when (theme) {
+            "Dark" -> ColorFilter.colorMatrix(ColorMatrix(floatArrayOf(-.85f,0f,0f,0f,240f, 0f,-.85f,0f,0f,240f, 0f,0f,-.85f,0f,240f, 0f,0f,0f,1f,0f)))
+            "Sepia" -> ColorFilter.colorMatrix(ColorMatrix(floatArrayOf(.96f,0f,0f,0f,0f, 0f,.93f,0f,0f,0f, 0f,0f,.86f,0f,0f, 0f,0f,0f,1f,0f)))
+            else -> null
+        }
+
 @Composable
 private fun AppearancePanel(value: Preferences, isPdf: Boolean, save: (Preferences) -> Unit) {
     var font by remember(value.fontSize) { mutableFloatStateOf(value.fontSize) }

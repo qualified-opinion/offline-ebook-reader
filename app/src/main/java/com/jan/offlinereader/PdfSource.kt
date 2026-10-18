@@ -2,10 +2,15 @@ package com.jan.offlinereader
 
 import android.graphics.Bitmap
 import android.graphics.Color
+import android.graphics.Canvas
+import android.graphics.Matrix
+import android.graphics.Paint
 import androidx.core.graphics.createBitmap
 import android.graphics.pdf.PdfRenderer
 import android.os.ParcelFileDescriptor
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.ensureActive
+import kotlin.coroutines.coroutineContext
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
@@ -29,6 +34,29 @@ class PdfSource(file: File) : Closeable {
                 createBitmap(width, height, Bitmap.Config.ARGB_8888).also { bitmap ->
                     bitmap.eraseColor(Color.WHITE)
                     page.render(bitmap, null, null, PdfRenderer.Page.RENDER_MODE_FOR_DISPLAY)
+                }
+            }
+        }
+    }
+    internal suspend fun renderViewport(index: Int, request: PdfZoomRequest): Bitmap = withContext(Dispatchers.IO) {
+        mutex.withLock {
+            check(!closed) { "The PDF is closed." }
+            renderer.openPage(index).use { page ->
+                val view = pdfViewport(page.width, page.height, request)
+                val bitmap = createBitmap(view.width, view.height, Bitmap.Config.ARGB_8888)
+                try {
+                    bitmap.eraseColor(Color.TRANSPARENT)
+                    Canvas(bitmap).drawRect(view.translateX, view.translateY,
+                        view.translateX + page.width * view.scaleX, view.translateY + page.height * view.scaleY,
+                        Paint().apply { color = Color.WHITE })
+                    val matrix = Matrix().apply { setValues(floatArrayOf(
+                        view.scaleX, 0f, view.translateX, 0f, view.scaleY, view.translateY, 0f, 0f, 1f)) }
+                    page.render(bitmap, null, matrix, PdfRenderer.Page.RENDER_MODE_FOR_DISPLAY)
+                    coroutineContext.ensureActive()
+                    bitmap
+                } catch (failure: Throwable) {
+                    bitmap.recycle()
+                    throw failure
                 }
             }
         }
