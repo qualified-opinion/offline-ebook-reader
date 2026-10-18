@@ -213,13 +213,35 @@ class RepositoryTest {
 
     @Test fun repeatedEpubImageAndCoverShareOneSavedFileWithoutRecounting() = runBlocking {
         // A real PNG over 1 MB: reading it 200 times would exceed the 100 MB limit.
-        val bitmap = java.awt.image.BufferedImage(600, 600, java.awt.image.BufferedImage.TYPE_INT_RGB)
         val random = java.util.Random(42)
-        val pixels = IntArray(600 * 600) { random.nextInt() }
-        bitmap.setRGB(0, 0, 600, 600, pixels, 0, 600)
-        val output = java.io.ByteArrayOutputStream()
-        assertTrue(javax.imageio.ImageIO.write(bitmap, "png", output))
-        val image = output.toByteArray()
+        val compressed = java.io.ByteArrayOutputStream()
+        java.util.zip.DeflaterOutputStream(compressed).use { output ->
+            repeat(600) {
+                val row = ByteArray(1 + 600 * 3)
+                random.nextBytes(row)
+                row[0] = 0 // PNG scanline: no filter, followed by RGB bytes.
+                output.write(row)
+            }
+        }
+        val png = java.io.ByteArrayOutputStream()
+        java.io.DataOutputStream(png).use { output ->
+            output.write(byteArrayOf(137.toByte(), 80, 78, 71, 13, 10, 26, 10))
+            fun chunk(type: String, bytes: ByteArray) {
+                val tag = type.toByteArray(Charsets.US_ASCII)
+                val crc = java.util.zip.CRC32().apply { update(tag); update(bytes) }
+                output.writeInt(bytes.size); output.write(tag); output.write(bytes)
+                output.writeInt(crc.value.toInt())
+            }
+            val header = java.io.ByteArrayOutputStream()
+            java.io.DataOutputStream(header).use {
+                it.writeInt(600); it.writeInt(600)
+                it.write(byteArrayOf(8, 2, 0, 0, 0)) // 8-bit RGB, no interlacing.
+            }
+            chunk("IHDR", header.toByteArray())
+            chunk("IDAT", compressed.toByteArray())
+            chunk("IEND", ByteArray(0))
+        }
+        val image = png.toByteArray()
         assertTrue(image.size >= 1024 * 1024)
         writeRepeatedImageEpub("illustrated.epub", image)
 
