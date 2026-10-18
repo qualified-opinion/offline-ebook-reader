@@ -190,15 +190,22 @@ class BookRepository(private val context: Context, private val dao: ReaderDao) {
         var cover: String? = null
         val coverId = opf.select("meta[name=cover]").firstOrNull()?.attr("content")
         val coverItem = items.values.firstOrNull { "cover-image" in it.attr("properties").split(' ') } ?: items[coverId]
-        fun image(path: String): String? = runCatching {
-            val data = bytes(path, 12 * 1024 * 1024)
-            val bounds = android.graphics.BitmapFactory.Options().apply { inJustDecodeBounds = true }
-            android.graphics.BitmapFactory.decodeByteArray(data, 0, data.size, bounds)
-            if (bounds.outWidth <= 0 || bounds.outHeight <= 0) return@runCatching null
-            val filename = "image-${MessageDigest.getInstance("SHA-256").digest(path.toByteArray()).take(12).joinToString("") { "%02x".format(it) }}"
-            File(dir, filename).writeBytes(data)
-            filename
-        }.getOrNull()
+        val imageCache = mutableMapOf<String, String?>()
+        fun image(path: String): String? {
+            // containsKey also recognizes a cached failure (null).
+            if (imageCache.containsKey(path)) return imageCache[path]
+            val saved = runCatching {
+                val data = bytes(path, 12 * 1024 * 1024)
+                val bounds = android.graphics.BitmapFactory.Options().apply { inJustDecodeBounds = true }
+                android.graphics.BitmapFactory.decodeByteArray(data, 0, data.size, bounds)
+                if (bounds.outWidth <= 0 || bounds.outHeight <= 0) return@runCatching null
+                val filename = "image-${MessageDigest.getInstance("SHA-256").digest(path.toByteArray()).take(12).joinToString("") { "%02x".format(it) }}"
+                File(dir, filename).writeBytes(data)
+                filename
+            }.getOrNull()
+            imageCache[path] = saved
+            return saved
+        }
         coverItem?.let { cover = image(resolve(opfPath, it.attr("href"))) }
         val fallback = mutableListOf<ContentsEntry>()
         opf.select("spine > itemref").filter { it.attr("linear") != "no" }.forEachIndexed { index, ref ->

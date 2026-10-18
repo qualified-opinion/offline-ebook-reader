@@ -191,6 +191,82 @@ class RepositoryTest {
         assertEquals(expected, importedText("unicode.txt"))
     }
 
+    private fun writeRepeatedImageEpub(filename: String, image: ByteArray) {
+        val chapters = (1..200).map { "text/chapter$it.xhtml" }
+        val manifest = chapters.mapIndexed { index, path -> """<item id="c$index" href="$path"/>""" }.joinToString("")
+        val spine = chapters.indices.joinToString("") { """<itemref idref="c$it"/>""" }
+        val entries = linkedMapOf(
+            "META-INF/container.xml" to """<container><rootfiles><rootfile full-path="OPS/book.opf"/></rootfiles></container>""",
+            "OPS/book.opf" to """<package><manifest><item id="cover" href="images/logo.png" properties="cover-image"/>$manifest</manifest><spine>$spine</spine></package>"""
+        )
+        chapters.forEachIndexed { index, path ->
+            val imagePath = if (index % 2 == 0) "../images/logo.png" else "../images/./logo.png"
+            entries["OPS/$path"] = """<html><body><p>Chapter $index.</p><img src="$imagePath"/></body></html>"""
+        }
+        ZipOutputStream(File(sourceDir, filename).outputStream()).use { zip ->
+            entries.forEach { (name, text) ->
+                zip.putNextEntry(ZipEntry(name)); zip.write(text.toByteArray()); zip.closeEntry()
+            }
+            zip.putNextEntry(ZipEntry("OPS/images/logo.png")); zip.write(image); zip.closeEntry()
+        }
+    }
+
+    @Test fun repeatedEpubImageAndCoverShareOneSavedFileWithoutRecounting() = runBlocking {
+        org.robolectric.shadows.ShadowBitmapFactory.setAllowInvalidImageData(false)
+        // A real PNG over 1 MB: reading it 200 times would exceed the 100 MB limit.
+        val random = java.util.Random(42)
+        val compressed = java.io.ByteArrayOutputStream()
+        java.util.zip.DeflaterOutputStream(compressed).use { output ->
+            repeat(600) {
+                val row = ByteArray(1 + 600 * 3)
+                random.nextBytes(row)
+                row[0] = 0 // PNG scanline: no filter, followed by RGB bytes.
+                output.write(row)
+            }
+        }
+        val png = java.io.ByteArrayOutputStream()
+        java.io.DataOutputStream(png).use { output ->
+            output.write(byteArrayOf(137.toByte(), 80, 78, 71, 13, 10, 26, 10))
+            fun chunk(type: String, bytes: ByteArray) {
+                val tag = type.toByteArray(Charsets.US_ASCII)
+                val crc = java.util.zip.CRC32().apply { update(tag); update(bytes) }
+                output.writeInt(bytes.size); output.write(tag); output.write(bytes)
+                output.writeInt(crc.value.toInt())
+            }
+            val header = java.io.ByteArrayOutputStream()
+            java.io.DataOutputStream(header).use {
+                it.writeInt(600); it.writeInt(600)
+                it.write(byteArrayOf(8, 2, 0, 0, 0)) // 8-bit RGB, no interlacing.
+            }
+            chunk("IHDR", header.toByteArray())
+            chunk("IDAT", compressed.toByteArray())
+            chunk("IEND", ByteArray(0))
+        }
+        val image = png.toByteArray()
+        assertTrue(image.size >= 1024 * 1024)
+        writeRepeatedImageEpub("illustrated.epub", image)
+
+        val book = repository.import(uri("illustrated.epub")).book
+        val images = repository.document(book).blocks.mapNotNull { it.image }
+        assertEquals(200, images.size)
+        assertEquals(1, images.distinct().size)
+        assertEquals(book.cover, images.first())
+        val saved = File(book.directory).listFiles()!!.filter { it.name.startsWith("image-") }
+        assertEquals(1, saved.size)
+        assertArrayEquals(image, saved.single().readBytes())
+    }
+
+    @Test fun repeatedUndecodableEpubImageIsCachedAsMissing() = runBlocking {
+        org.robolectric.shadows.ShadowBitmapFactory.setAllowInvalidImageData(false)
+        writeRepeatedImageEpub("invalid-image.epub", ByteArray(1024 * 1024))
+        val book = repository.import(uri("invalid-image.epub")).book
+        val document = repository.document(book)
+        assertNull(book.cover)
+        assertTrue(document.blocks.none { it.image != null })
+        assertEquals(200, document.blocks.count { !it.heading })
+        assertTrue(File(book.directory).listFiles()!!.none { it.name.startsWith("image-") })
+    }
+
     @Test fun failedImportDoesNotLeaveLibraryRecordOrPrivateDirectory() = runBlocking {
         File(sourceDir, "broken.epub").writeText("not a zip archive")
         val root = File(context.filesDir, "books")
