@@ -122,7 +122,7 @@ class RepositoryTest {
     }
     private suspend fun importedText(filename: String): String {
         val book = repository.import(uri(filename)).book
-        return repository.document(book).blocks.joinToString("") { repository.text(book, it) }
+        return repository.document(book).blocks.map { repository.text(book, it) }.joinToString("")
     }
 
     @Test fun extensionlessEpubUsesProviderMimeType() = runBlocking {
