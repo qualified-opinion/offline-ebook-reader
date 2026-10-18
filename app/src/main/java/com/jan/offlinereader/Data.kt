@@ -34,6 +34,9 @@ data class Preferences(@PrimaryKey val id: Int = 1, val fontSize: Float = 20f,
 @Dao
 interface ReaderDao {
     @Query("SELECT * FROM books ORDER BY lastRead DESC, imported DESC") fun books(): Flow<List<Book>>
+    @Query("SELECT * FROM books ORDER BY id") suspend fun snapshotBooks(): List<Book>
+    @Query("SELECT * FROM bookmarks ORDER BY id") suspend fun snapshotBookmarks(): List<Bookmark>
+    @Query("SELECT * FROM preferences WHERE id=1") suspend fun snapshotPreferences(): Preferences?
     @Query("SELECT * FROM books WHERE id = :id") suspend fun book(id: String): Book?
     @Query("SELECT * FROM books WHERE sha256 = :hash") suspend fun byHash(hash: String): Book?
     @Insert suspend fun insert(book: Book)

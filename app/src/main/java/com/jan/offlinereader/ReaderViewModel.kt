@@ -70,6 +70,35 @@ class ReaderViewModel(application: Application, private val savedState: SavedSta
             }
         }
     }
+    fun exportLibrary(uri: Uri) { viewModelScope.launch {
+        importMutex.withLock {
+            _busy.value = true
+            var complete = false
+            try {
+                saver.awaitPendingSaves()
+                withContext(Dispatchers.IO) {
+                    val output = app.contentResolver.openOutputStream(uri, "w") ?: error("The export file could not be opened.")
+                    LibraryExport(app.database).write(output)
+                }
+                complete = true
+                _message.value = "Library exported."
+            } catch (e: CancellationException) { throw e }
+            catch (e: Exception) {
+                val reason = when (e) {
+                    is SecurityException -> "Access to the destination was denied. Choose another folder."
+                    is java.io.IOException -> "Check the destination and your device's free storage."
+                    else -> e.message ?: "Please choose another destination and try again."
+                }
+                _message.value = "Couldn't export the library. $reason"
+            }
+            finally {
+                if (!complete) withContext(NonCancellable + Dispatchers.IO) {
+                    runCatching { android.provider.DocumentsContract.deleteDocument(app.contentResolver, uri) }
+                }
+                _busy.value = false
+            }
+        }
+    } }
     fun position(index: Int, offset: Int, progress: Float) {
         val book = _active.value ?: return
         latest = ReadingPosition(book.id, index.coerceIn(0, book.units - 1), offset.coerceAtLeast(0), progress.coerceIn(0f, 1f))
@@ -91,7 +120,9 @@ class ReaderViewModel(application: Application, private val savedState: SavedSta
     fun deleteBookmark(bookmark: Bookmark) { viewModelScope.launch { dao.deleteBookmark(bookmark.id) } }
     fun settings(value: Preferences) { viewModelScope.launch { dao.preferences(value) } }
     fun delete(book: Book) { viewModelScope.launch {
-        try { repository.delete(book) } catch (e: Exception) { _message.value = friendly(e) }
+        importMutex.withLock {
+            try { repository.delete(book) } catch (e: Exception) { _message.value = friendly(e) }
+        }
     } }
     fun error(e: Exception) { _message.value = friendly(e) }
     fun clearMessage() { _message.value = null }
