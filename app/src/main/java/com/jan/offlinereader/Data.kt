@@ -39,6 +39,8 @@ interface ReaderDao {
     @Query("SELECT * FROM preferences WHERE id=1") suspend fun snapshotPreferences(): Preferences?
     @Query("SELECT * FROM books WHERE id = :id") suspend fun book(id: String): Book?
     @Query("SELECT * FROM books WHERE sha256 = :hash") suspend fun byHash(hash: String): Book?
+    @Update suspend fun updateBook(book: Book)
+    @Query("DELETE FROM bookmarks WHERE bookId=:id") suspend fun clearBookmarks(id: String)
     @Insert suspend fun insert(book: Book)
     @Query("UPDATE books SET position=:position, offset=:offset, progress=:progress, lastRead=:time WHERE id=:id")
     suspend fun position(id: String, position: Int, offset: Int, progress: Float, time: Long)
