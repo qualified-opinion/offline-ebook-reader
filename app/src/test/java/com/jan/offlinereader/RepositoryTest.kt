@@ -212,6 +212,7 @@ class RepositoryTest {
     }
 
     @Test fun repeatedEpubImageAndCoverShareOneSavedFileWithoutRecounting() = runBlocking {
+        org.robolectric.shadows.ShadowBitmapFactory.setAllowInvalidImageData(false)
         // A real PNG over 1 MB: reading it 200 times would exceed the 100 MB limit.
         val random = java.util.Random(42)
         val compressed = java.io.ByteArrayOutputStream()
@@ -256,6 +257,7 @@ class RepositoryTest {
     }
 
     @Test fun repeatedUndecodableEpubImageIsCachedAsMissing() = runBlocking {
+        org.robolectric.shadows.ShadowBitmapFactory.setAllowInvalidImageData(false)
         writeRepeatedImageEpub("invalid-image.epub", ByteArray(1024 * 1024))
         val book = repository.import(uri("invalid-image.epub")).book
         val document = repository.document(book)
