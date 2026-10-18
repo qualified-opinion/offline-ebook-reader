@@ -50,7 +50,7 @@ fun ReaderScreen(book: Book, vm: ReaderViewModel, preferences: Preferences) {
     var document by remember { mutableStateOf<TextDocument?>(null) }
     var pdf by remember { mutableStateOf<PdfSource?>(null) }
     var ratios by remember { mutableStateOf<List<Float>>(emptyList()) }
-    var initialText by remember { mutableStateOf<Map<Int, String>>(emptyMap()) }
+    val textCache = remember(book.id) { TextBlockCache() }
     var failure by remember { mutableStateOf<String?>(null) }
     var ready by remember { mutableStateOf(false) }
     var controls by rememberSaveable { mutableStateOf(true) }
@@ -58,6 +58,7 @@ fun ReaderScreen(book: Book, vm: ReaderViewModel, preferences: Preferences) {
     var zoomPage by remember { mutableStateOf<Int?>(null) }
     val list = rememberLazyListState(book.position, book.offset)
     val scope = rememberCoroutineScope()
+    var jumpJob by remember { mutableStateOf<Job?>(null) }
     val lifecycleOwner = LocalLifecycleOwner.current
     val context = LocalContext.current
     val bookmarks by vm.bookmarks.collectAsStateWithLifecycle()
@@ -85,10 +86,7 @@ fun ReaderScreen(book: Book, vm: ReaderViewModel, preferences: Preferences) {
             } else {
                 val loaded = vm.repository.document(book)
                 document = loaded
-                val restoreIndex = list.firstVisibleItemIndex
-                initialText = (restoreIndex..minOf(restoreIndex + 5, loaded.blocks.lastIndex)).associateWith {
-                    vm.repository.text(book, loaded.blocks[it])
-                }
+                textCache.preload(list.firstVisibleItemIndex, loaded.blocks) { vm.repository.text(book, it) }
             }
             ready = true
             awaitCancellation()
@@ -112,11 +110,26 @@ fun ReaderScreen(book: Book, vm: ReaderViewModel, preferences: Preferences) {
         if (ready) snapshotFlow { Triple(list.firstVisibleItemIndex, list.firstVisibleItemScrollOffset, readingProgress(list, book.units)) }
             .filter { list.layoutInfo.totalItemsCount > 0 }.distinctUntilChanged().collect { (index, offset, progress) -> vm.position(index, offset, progress) }
     }
+    LaunchedEffect(ready, document) {
+        val blocks = document?.blocks
+        if (ready && blocks != null) {
+            snapshotFlow { list.firstVisibleItemIndex }.collectLatest { index ->
+                textCache.preload(index, blocks) { vm.repository.text(book, it) }
+            }
+        }
+    }
     LaunchedEffect(controls, panel, list.isScrollInProgress) {
         if (controls && panel == null) { delay(7000); controls = false }
     }
     fun jump(index: Int, offset: Int = 0) {
-        scope.launch { list.scrollToItem(index.coerceIn(0, book.units - 1), offset); panel = null }
+        jumpJob?.cancel()
+        jumpJob = scope.launch {
+            val target = index.coerceIn(0, book.units - 1)
+            // Restore bookmark offsets against real text, rather than a loading placeholder.
+            document?.let { loaded -> textCache.preload(target, loaded.blocks) { vm.repository.text(book, it) } }
+            list.scrollToItem(target, offset)
+            panel = null
+        }
     }
 
     BoxWithConstraints(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
@@ -140,7 +153,7 @@ fun ReaderScreen(book: Book, vm: ReaderViewModel, preferences: Preferences) {
                     itemsIndexed(document!!.blocks, key = { index, _ -> index }) { index, block ->
                         Box(Modifier.widthIn(max = 800.dp).fillMaxWidth().padding(horizontal = margin)) {
                             if (block.image != null) LocalImage(File(book.directory, block.image), Modifier.fillMaxWidth().heightIn(min = 120.dp, max = 500.dp), "Book illustration")
-                            else TextBlock(book, block, initialText[index], vm, preferences)
+                            else TextBlock(book, block, index, textCache, vm, preferences)
                         }
                     }
                 }
@@ -217,20 +230,26 @@ private fun readingProgress(list: LazyListState, units: Int): Float {
     return ((list.firstVisibleItemIndex + fraction) / units.coerceAtLeast(1)).coerceIn(0f, 1f)
 }
 @Composable
-private fun TextBlock(book: Book, block: Block, initial: String?, vm: ReaderViewModel, preferences: Preferences) {
-    var failed by remember { mutableStateOf(false) }
-    val text by produceState(initial, block) {
-        if (initial == null) {
-            try { value = vm.repository.text(book, block) }
-            catch (e: CancellationException) { throw e }
-            catch (e: Exception) { failed = true; vm.error(e) }
-        }
+private fun TextBlock(book: Book, block: Block, index: Int, cache: TextBlockCache, vm: ReaderViewModel, preferences: Preferences) {
+    var failed by remember(book.id, index, block) { mutableStateOf(false) }
+    val text by produceState(cache.cached(index), book.id, index, block) {
+        try { value = cache.load(index) { vm.repository.text(book, block) } }
+        catch (e: CancellationException) { throw e }
+        catch (e: Exception) { failed = true; vm.error(e) }
     }
-    if (text == null) Box(Modifier.fillMaxWidth().height(if (failed) 60.dp else 180.dp), contentAlignment = Alignment.Center) { if (failed) Text("This passage couldn't be loaded.") else CircularProgressIndicator(Modifier.size(20.dp)) }
-    else Text(text!!, fontFamily = FontFamily.Serif, fontSize = (preferences.fontSize * if (block.heading) 1.25f else 1f).sp,
-        lineHeight = (preferences.fontSize * preferences.lineSpacing).sp,
-        fontWeight = if (block.heading) FontWeight.SemiBold else FontWeight.Normal,
-        color = MaterialTheme.colorScheme.onBackground)
+    BoxWithConstraints(Modifier.fillMaxWidth()) {
+        val density = LocalDensity.current
+        val widthSp = with(density) { maxWidth.toSp().value }
+        val estimate = textPlaceholderHeight(block, widthSp, preferences.fontSize, preferences.lineSpacing)
+        if (text == null) Box(Modifier.fillMaxWidth().height(if (failed) 60.dp else with(density) { estimate.sp.toDp() }),
+            contentAlignment = Alignment.Center) {
+            if (failed) Text("This passage couldn't be loaded.") else CircularProgressIndicator(Modifier.size(20.dp))
+        }
+        else Text(text!!, fontFamily = FontFamily.Serif, fontSize = (preferences.fontSize * if (block.heading) 1.25f else 1f).sp,
+            lineHeight = (preferences.fontSize * preferences.lineSpacing).sp,
+            fontWeight = if (block.heading) FontWeight.SemiBold else FontWeight.Normal,
+            color = MaterialTheme.colorScheme.onBackground)
+    }
 }
 @Composable
 internal fun PdfPage(source: PdfSource, index: Int, ratio: Float, theme: String, modifier: Modifier) {
