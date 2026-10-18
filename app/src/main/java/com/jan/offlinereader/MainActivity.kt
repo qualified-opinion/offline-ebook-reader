@@ -1,0 +1,130 @@
+package com.jan.offlinereader
+
+import android.os.Bundle
+import androidx.activity.ComponentActivity
+import androidx.activity.compose.setContent
+import androidx.activity.enableEdgeToEdge
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.*
+import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.lazy.grid.*
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.MenuBook
+import androidx.compose.material.icons.filled.*
+import androidx.compose.material3.*
+import androidx.compose.runtime.*
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.lifecycle.viewmodel.compose.viewModel
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
+import java.io.File
+
+class MainActivity : ComponentActivity() {
+    override fun onCreate(savedInstanceState: Bundle?) {
+        super.onCreate(savedInstanceState)
+        enableEdgeToEdge()
+        setContent { ReaderApp() }
+    }
+}
+fun readerColors(theme: String) = when (theme) {
+    "Dark" -> darkColorScheme(primary = Color(0xFFBBCBB1), background = Color(0xFF181B18), surface = Color(0xFF20241F), onBackground = Color(0xFFD9DED5), onSurface = Color(0xFFD9DED5))
+    "Light" -> lightColorScheme(primary = Color(0xFF526747), background = Color(0xFFFCFCF8), surface = Color(0xFFF5F5EE), onBackground = Color(0xFF292E26), onSurface = Color(0xFF292E26))
+    else -> lightColorScheme(primary = Color(0xFF596B46), background = Color(0xFFF4EDDD), surface = Color(0xFFECE4D2), onBackground = Color(0xFF3D392F), onSurface = Color(0xFF3D392F))
+}
+@Composable
+fun ReaderApp(vm: ReaderViewModel = viewModel()) {
+    val preferences by vm.preferences.collectAsStateWithLifecycle()
+    val active by vm.active.collectAsStateWithLifecycle()
+    val message by vm.message.collectAsStateWithLifecycle()
+    val snackbar = remember { SnackbarHostState() }
+    MaterialTheme(colorScheme = readerColors(preferences.theme)) {
+        LaunchedEffect(message) { message?.let { snackbar.showSnackbar(it); vm.clearMessage() } }
+        Box(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background).safeDrawingPadding()) {
+            if (active == null) LibraryScreen(vm) else key(active!!.id) { ReaderScreen(active!!, vm, preferences) }
+            SnackbarHost(snackbar, Modifier.align(Alignment.BottomCenter))
+        }
+    }
+}
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun LibraryScreen(vm: ReaderViewModel) {
+    val books by vm.books.collectAsStateWithLifecycle()
+    val busy by vm.busy.collectAsStateWithLifecycle()
+    var query by rememberSaveable { mutableStateOf("") }
+    var deleting by remember { mutableStateOf<Book?>(null) }
+    val importer = rememberLauncherForActivityResult(ActivityResultContracts.OpenMultipleDocuments()) { if (it.isNotEmpty()) vm.import(it) }
+    Scaffold(
+        containerColor = MaterialTheme.colorScheme.background,
+        topBar = { TopAppBar(title = { Column { Text("Your library", fontFamily = FontFamily.Serif); Text("OFFLINE READER", style = MaterialTheme.typography.labelSmall, letterSpacing = 2.sp) } }) },
+        floatingActionButton = { ExtendedFloatingActionButton(onClick = { if (!busy) importer.launch(arrayOf("*/*")) }, icon = { Icon(Icons.Default.Add, null) }, text = { Text(if (busy) "Importing…" else "Import books") }) }
+    ) { padding ->
+        Column(Modifier.fillMaxSize().padding(padding)) {
+            OutlinedTextField(query, { query = it }, placeholder = { Text("Search title or author") }, leadingIcon = { Icon(Icons.Default.Search, null) }, singleLine = true, modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 8.dp), shape = RoundedCornerShape(20.dp))
+            if (busy) LinearProgressIndicator(Modifier.fillMaxWidth().padding(horizontal = 20.dp))
+            if (books.isEmpty()) {
+                Column(Modifier.weight(1f).fillMaxWidth().padding(40.dp), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center) {
+                    Icon(Icons.AutoMirrored.Filled.MenuBook, null, Modifier.size(64.dp), tint = MaterialTheme.colorScheme.primary)
+                    Spacer(Modifier.height(20.dp))
+                    Text("A little space for your books", style = MaterialTheme.typography.headlineSmall, fontFamily = FontFamily.Serif)
+                    Spacer(Modifier.height(12.dp))
+                    Text("Import a book from Files or Downloads. Your library, reading spots, and bookmarks stay on this device.", style = MaterialTheme.typography.bodyLarge)
+                    Spacer(Modifier.height(16.dp)); Text("EPUB · PDF · TXT · MD · HTML · FB2", style = MaterialTheme.typography.labelMedium)
+                }
+            } else {
+                val filtered = books.filter { it.title.contains(query, true) || it.author.contains(query, true) }
+                if (filtered.isEmpty()) Text("No matching books.", Modifier.padding(24.dp))
+                LazyVerticalGrid(columns = GridCells.Adaptive(155.dp), contentPadding = PaddingValues(20.dp, 12.dp, 20.dp, 104.dp), horizontalArrangement = Arrangement.spacedBy(16.dp), verticalArrangement = Arrangement.spacedBy(24.dp)) {
+                    items(filtered, key = { it.id }) { book ->
+                        Column {
+                            Card(onClick = { vm.open(book) }, shape = RoundedCornerShape(10.dp)) {
+                                Box(Modifier.fillMaxWidth().aspectRatio(.72f).background(MaterialTheme.colorScheme.surfaceVariant), contentAlignment = Alignment.Center) {
+                                    if (book.cover != null) LocalImage(File(book.directory, book.cover), Modifier.fillMaxSize(), book.title, ContentScale.Fit)
+                                    else Column(Modifier.padding(16.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+                                        Icon(Icons.AutoMirrored.Filled.MenuBook, null, Modifier.size(32.dp)); Spacer(Modifier.height(20.dp))
+                                        Text(book.title, fontFamily = FontFamily.Serif, fontWeight = FontWeight.Medium, maxLines = 5, overflow = TextOverflow.Ellipsis)
+                                    }
+                                    Surface(Modifier.align(Alignment.BottomStart).padding(8.dp), shape = RoundedCornerShape(4.dp), color = MaterialTheme.colorScheme.background.copy(alpha = .9f)) { Text(book.format, Modifier.padding(5.dp), style = MaterialTheme.typography.labelSmall) }
+                                }
+                            }
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Text(book.title, Modifier.weight(1f).padding(top = 10.dp), maxLines = 2, overflow = TextOverflow.Ellipsis, style = MaterialTheme.typography.titleSmall)
+                                IconButton(onClick = { deleting = book }, modifier = Modifier.size(36.dp)) { Icon(Icons.Default.MoreVert, "Remove ${book.title}") }
+                            }
+                            if (book.author.isNotBlank()) Text(book.author, maxLines = 1, overflow = TextOverflow.Ellipsis, style = MaterialTheme.typography.bodySmall)
+                            Spacer(Modifier.height(8.dp))
+                            LinearProgressIndicator(progress = { book.progress }, modifier = Modifier.fillMaxWidth().height(3.dp))
+                            Text(if (book.lastRead == 0L) "Not started" else "${(book.progress * 100).toInt()}% read", Modifier.padding(top = 5.dp), style = MaterialTheme.typography.labelSmall)
+                        }
+                    }
+                }
+            }
+        }
+    }
+    deleting?.let { book -> AlertDialog(onDismissRequest = { deleting = null }, title = { Text("Remove book?") }, text = { Text("Remove “${book.title}” and its bookmarks from this library? The original file in Downloads or Files is kept.") }, confirmButton = { TextButton(onClick = { vm.delete(book); deleting = null }) { Text("Remove") } }, dismissButton = { TextButton(onClick = { deleting = null }) { Text("Cancel") } }) }
+}
+
+@Composable
+fun LocalImage(file: File, modifier: Modifier, description: String?, scale: ContentScale = ContentScale.Fit) {
+    val bitmap by produceState<android.graphics.Bitmap?>(null, file.absolutePath) {
+        value = withContext(Dispatchers.IO) {
+            val bounds = android.graphics.BitmapFactory.Options().apply { inJustDecodeBounds = true }
+            android.graphics.BitmapFactory.decodeFile(file.absolutePath, bounds)
+            val options = android.graphics.BitmapFactory.Options().apply { inSampleSize = 1; while (bounds.outWidth / inSampleSize > 1400 || bounds.outHeight / inSampleSize > 1800) inSampleSize *= 2 }
+            android.graphics.BitmapFactory.decodeFile(file.absolutePath, options)
+        }
+    }
+    bitmap?.let { Image(it.asImageBitmap(), description, modifier, contentScale = scale) }
+}
