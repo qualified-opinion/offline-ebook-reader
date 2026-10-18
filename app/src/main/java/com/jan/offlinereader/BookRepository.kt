@@ -23,9 +23,16 @@ import java.util.zip.ZipFile
 class BookRepository(private val context: Context, private val dao: ReaderDao) {
     private val root = File(context.filesDir, "books").apply { mkdirs() }
 
-    suspend fun import(uri: Uri): Book = withContext(Dispatchers.IO) {
-        val name = context.contentResolver.query(uri, arrayOf(OpenableColumns.DISPLAY_NAME), null, null, null)
-            ?.use { if (it.moveToFirst()) it.getString(0) else null } ?: "Book"
+    data class ImportResult(val book: Book, val alreadyPresent: Boolean)
+
+    suspend fun displayName(uri: Uri): String = withContext(Dispatchers.IO) {
+        context.contentResolver.query(uri, arrayOf(OpenableColumns.DISPLAY_NAME), null, null, null)
+            ?.use { if (it.moveToFirst()) it.getString(0) else null }
+            ?.takeIf { it.isNotBlank() } ?: "Selected file"
+    }
+
+    suspend fun import(uri: Uri, sourceName: String? = null): ImportResult = withContext(Dispatchers.IO) {
+        val name = sourceName ?: displayName(uri)
         val extension = name.substringAfterLast('.', "").lowercase()
         require(extension in setOf("epub", "pdf", "txt", "md", "html", "htm", "fb2")) {
             "Choose an EPUB, PDF, TXT, Markdown, HTML, or FB2 file. MOBI, AZW and DRM-protected books aren't supported."
@@ -49,7 +56,7 @@ class BookRepository(private val context: Context, private val dao: ReaderDao) {
                 }
             } ?: error("The selected file is no longer available. Please select it again.")
             val hash = digest.digest().joinToString("") { "%02x".format(it) }
-            dao.byHash(hash)?.let { dir.deleteRecursively(); return@withContext it }
+            dao.byHash(hash)?.let { dir.deleteRecursively(); return@withContext ImportResult(it, alreadyPresent = true) }
             var title = name.substringBeforeLast('.', name)
             var author = ""
             var cover: String? = null
@@ -121,7 +128,7 @@ class BookRepository(private val context: Context, private val dao: ReaderDao) {
             }
             val book = Book(id, title, author, extension.uppercase(), dir.absolutePath, hash, cover, units)
             dao.insert(book)
-            book
+            ImportResult(book, alreadyPresent = false)
         } catch (e: Exception) {
             dir.deleteRecursively()
             throw e
