@@ -96,8 +96,3 @@ than automatically tracking the latest releases. Room schemas are exported under
 
 See `VALIDATION.md` for actual build results and the device acceptance checklist.
 
-## Repository notes
-
-The native Android app is built from the Gradle project at the repository root.
-The existing `index.html`, `app.js` and `style.css` files are an earlier web starter
-and are separate from the Android app.
