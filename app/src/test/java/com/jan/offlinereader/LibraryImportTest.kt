@@ -74,7 +74,7 @@ class LibraryImportTest {
         assertEquals(mark.copy(id = restoredMark.id, bookId = restored.id), restoredMark)
         assertEquals(preferences, database.dao().snapshotPreferences())
         assertArrayEquals(entries.getValue("books/${saved.sha256}/original.txt"), File(restored.directory, "original.txt").readBytes())
-        assertTrue(File(restored.directory, "index.json").exists())
+        assertEquals(saved.title, repository.document(restored).contents.first().title)
     }
     @Test fun repeatRestoreReplacesBookmarksAndKeepsUnrelatedBooks() = runBlocking {
         val saved = book()

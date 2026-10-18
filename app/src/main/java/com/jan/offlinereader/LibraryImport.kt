@@ -81,7 +81,7 @@ internal class LibraryImport(private val database: ReaderDatabase, private val r
                 for ((file, record) in files) {
                     // Finish bookkeeping even if the caller is cancelled as import returns.
                     val book = withContext(NonCancellable) {
-                        repository.import(Uri.fromFile(file), file.name).also { if (!it.alreadyPresent) added += it.book }.book
+                        repository.import(Uri.fromFile(file), "${record.getString("title")}.${file.extension}").also { if (!it.alreadyPresent) added += it.book }.book
                     }
                     coroutineContext.ensureActive()
                     require(book.units == record.getInt("units")) { "The saved book layout does not match." }
