@@ -7,7 +7,9 @@ to 8.10.1, which supports API 36 with the existing Gradle 8.11.1 and JDK 17.
 CI installs Android SDK Platform 36 and AGP's default Build Tools 35.0.0.
 Kotlin/KSP, Compose, AndroidX and Room versions are unchanged.
 
-Automated checks for this upgrade: pending CI.
+Automated checks (`testDebugUnitTest lintDebug assembleDebug`) passed for commit
+`1434a21`: [API 36 build](https://github.com/qualified-opinion/offline-ebook-reader/actions/runs/39118392457).
+These are JVM/static/build checks; they do not establish Android 16 UI behavior.
 
 Code review found the app already uses enableEdgeToEdge, safeDrawingPadding,
 Compose BackHandler and Material 3 dialogs/sheets. It does not override the
