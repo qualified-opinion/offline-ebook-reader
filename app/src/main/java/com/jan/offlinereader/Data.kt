@@ -52,5 +52,8 @@ class ReaderApplication : Application() {
     val database by lazy { Room.databaseBuilder(this, ReaderDatabase::class.java, "reader.db").build() }
     // Saves remain alive when a reader ViewModel is cleared during navigation.
     val appScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+    internal val positionSaver by lazy {
+        PositionSaver(appScope) { p -> database.dao().position(p.bookId, p.index, p.offset, p.progress, System.currentTimeMillis()) }
+    }
     val repository by lazy { BookRepository(this, database.dao()) }
 }

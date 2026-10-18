@@ -6,7 +6,6 @@ import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.viewModelScope
 import kotlinx.coroutines.*
-import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
@@ -15,6 +14,7 @@ class ReaderViewModel(application: Application, private val savedState: SavedSta
     private val app = application as ReaderApplication
     val repository = app.repository
     private val dao = app.database.dao()
+    private val saver = app.positionSaver
     val books = dao.books().stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
     val preferences = dao.preferences().map { it ?: Preferences() }.stateIn(viewModelScope, SharingStarted.Eagerly, Preferences())
     private val _active = MutableStateFlow<Book?>(null)
@@ -27,23 +27,10 @@ class ReaderViewModel(application: Application, private val savedState: SavedSta
     val bookmarks = _bookmarks.asStateFlow()
     private var bookmarkJob: Job? = null
     private val importMutex = Mutex()
-    data class ReadingPosition(val bookId: String, val index: Int, val offset: Int, val progress: Float)
     private var latest: ReadingPosition? = null
-    private val pending = java.util.concurrent.ConcurrentHashMap<String, ReadingPosition>()
-    private val saves = Channel<Unit>(Channel.CONFLATED)
 
     init {
-        app.appScope.launch {
-            for (signal in saves) {
-                pending.entries.toList().forEach { (id, p) ->
-                    if (pending.remove(id, p)) {
-                        try { dao.position(p.bookId, p.index, p.offset, p.progress, System.currentTimeMillis()) }
-                        catch (_: Exception) { _message.value = "Your reading spot couldn't be saved. Check free storage." }
-                    }
-                }
-                delay(150)
-            }
-        }
+        viewModelScope.launch { saver.errors.collect { _message.value = it } }
         savedState.get<String>("activeBook")?.let { id -> viewModelScope.launch { dao.book(id)?.let { activate(it) } } }
     }
     private fun activate(book: Book) {
@@ -88,7 +75,8 @@ class ReaderViewModel(application: Application, private val savedState: SavedSta
         latest = ReadingPosition(book.id, index.coerceIn(0, book.units - 1), offset.coerceAtLeast(0), progress.coerceIn(0f, 1f))
         flush()
     }
-    fun flush() { latest?.let { pending[it.bookId] = it; saves.trySend(Unit) } }
+    fun flush() { latest?.let { saver.enqueue(it) } }
+    override fun onCleared() { flush(); super.onCleared() }
     fun bookmark() {
         val p = latest ?: return
         if (_bookmarks.value.any { it.position == p.index && kotlin.math.abs(it.offset - p.offset) < 20 }) {
