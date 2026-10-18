@@ -104,7 +104,7 @@ private fun LibraryScreen(vm: ReaderViewModel) {
                         Column {
                             Card(onClick = { vm.open(book) }, shape = RoundedCornerShape(10.dp)) {
                                 Box(Modifier.fillMaxWidth().aspectRatio(.72f).background(MaterialTheme.colorScheme.surfaceVariant), contentAlignment = Alignment.Center) {
-                                    if (book.cover != null) LocalImage(File(book.directory, book.cover), Modifier.fillMaxSize(), book.title, ContentScale.Fit)
+                                    if (book.cover != null) CoverImage(File(book.directory, book.cover), Modifier.fillMaxSize(), book.title)
                                     else Column(Modifier.padding(16.dp), horizontalAlignment = Alignment.CenterHorizontally) {
                                         Icon(Icons.AutoMirrored.Filled.MenuBook, null, Modifier.size(32.dp)); Spacer(Modifier.height(20.dp))
                                         Text(book.title, fontFamily = FontFamily.Serif, fontWeight = FontWeight.Medium, maxLines = 5, overflow = TextOverflow.Ellipsis)
