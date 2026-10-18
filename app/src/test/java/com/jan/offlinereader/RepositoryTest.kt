@@ -58,8 +58,8 @@ class RepositoryTest {
     }
     @Test fun importedCopySurvivesOriginalDeletionAndDuplicateIsNotAdded() = runBlocking {
         val source = File(sourceDir, "novel.txt").apply { writeText(("x".repeat(8191) + "😀\n" + "Hello, offline world!\n".repeat(2000))) }
-        val book = repository.import(uri(source.name))
-        val duplicate = repository.import(uri(source.name))
+        val book = repository.import(uri(source.name)).book
+        val duplicate = repository.import(uri(source.name)).book
         assertEquals(book.id, duplicate.id)
         assertEquals(1, database.dao().books().first().size)
         source.delete()
@@ -67,9 +67,23 @@ class RepositoryTest {
         val reconstructed = document.blocks.map { repository.text(book, it) }.joinToString("")
         assertEquals(("x".repeat(8191) + "😀\n" + "Hello, offline world!\n".repeat(2000)), reconstructed)
     }
+    @Test fun duplicateResultIsFlaggedAndStagingCopyIsRemoved() = runBlocking {
+        File(sourceDir, "first.txt").writeText("The same book.")
+        File(sourceDir, "renamed.txt").writeText("The same book.")
+        val first = repository.import(uri("first.txt"))
+        val root = File(context.filesDir, "books")
+        val before = root.listFiles()!!.map { it.name }.toSet()
+        val duplicate = repository.import(uri("renamed.txt"))
+        assertFalse(first.alreadyPresent)
+        assertTrue(duplicate.alreadyPresent)
+        assertEquals(first.book.id, duplicate.book.id)
+        assertEquals(before, root.listFiles()!!.map { it.name }.toSet())
+        assertEquals("renamed.txt", repository.displayName(uri("renamed.txt")))
+    }
+
     @Test fun progressPreferencesAndBookmarksSurviveDatabaseReopenAndCascadeOnRemoval() = runBlocking {
         File(sourceDir, "novel.txt").writeText("Long enough to scroll. ".repeat(500))
-        val book = repository.import(uri("novel.txt"))
+        val book = repository.import(uri("novel.txt")).book
         database.dao().position(book.id, 3, 84, .42f, 1234)
         database.dao().preferences(Preferences(fontSize = 25f, lineSpacing = 1.8f, theme = "Dark"))
         database.dao().bookmark(Bookmark(bookId = book.id, position = 3, offset = 84, label = "My spot"))
@@ -94,7 +108,7 @@ class RepositoryTest {
         ZipOutputStream(File(sourceDir, "test.epub").outputStream()).use { zip -> entries.forEach { (name, text) ->
             zip.putNextEntry(ZipEntry(name)); zip.write(text.toByteArray()); zip.closeEntry()
         } }
-        val book = repository.import(uri("test.epub"))
+        val book = repository.import(uri("test.epub")).book
         assertEquals("Quiet Book", book.title); assertEquals("Jan", book.author)
         val document = repository.document(book)
         val text = document.blocks.map { repository.text(book, it) }.joinToString(" ")

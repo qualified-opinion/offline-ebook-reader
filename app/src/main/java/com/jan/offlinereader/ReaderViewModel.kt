@@ -65,14 +65,20 @@ class ReaderViewModel(application: Application, private val savedState: SavedSta
             importMutex.withLock {
                 _busy.value = true
                 var imported = 0
+                var duplicates = 0
                 val errors = mutableListOf<String>()
                 try {
                     uris.forEach { uri ->
-                        try { repository.import(uri); imported++ }
+                        var name = "Selected file"
+                        try {
+                            name = repository.displayName(uri)
+                            val result = repository.import(uri, name)
+                            if (result.alreadyPresent) duplicates++ else imported++
+                        }
                         catch (e: CancellationException) { throw e }
-                        catch (e: Exception) { errors += friendly(e) }
+                        catch (e: Exception) { errors += "Couldn’t import “$name”: ${friendly(e)}" }
                     }
-                    _message.value = if (errors.isEmpty()) "$imported book(s) ready in your library." else "$imported book(s) ready. ${errors.first()}"
+                    _message.value = importSummary(imported, duplicates, errors)
                 } finally { _busy.value = false }
             }
         }
