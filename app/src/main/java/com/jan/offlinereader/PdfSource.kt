@@ -38,27 +38,32 @@ class PdfSource(file: File) : Closeable {
             }
         }
     }
-    internal suspend fun renderViewport(index: Int, request: PdfZoomRequest): Bitmap = withContext(Dispatchers.IO) {
-        mutex.withLock {
-            check(!closed) { "The PDF is closed." }
-            renderer.openPage(index).use { page ->
-                val view = pdfViewport(page.width, page.height, request)
-                val bitmap = createBitmap(view.width, view.height, Bitmap.Config.ARGB_8888)
-                try {
-                    bitmap.eraseColor(Color.TRANSPARENT)
-                    Canvas(bitmap).drawRect(view.translateX, view.translateY,
-                        view.translateX + page.width * view.scaleX, view.translateY + page.height * view.scaleY,
-                        Paint().apply { color = Color.WHITE })
-                    val matrix = Matrix().apply { setValues(floatArrayOf(
-                        view.scaleX, 0f, view.translateX, 0f, view.scaleY, view.translateY, 0f, 0f, 1f)) }
-                    page.render(bitmap, null, matrix, PdfRenderer.Page.RENDER_MODE_FOR_DISPLAY)
-                    coroutineContext.ensureActive()
-                    bitmap
-                } catch (failure: Throwable) {
-                    bitmap.recycle()
-                    throw failure
+    internal suspend fun renderViewport(index: Int, request: PdfZoomRequest): Bitmap {
+        var allocated: Bitmap? = null
+        try {
+            return withContext(Dispatchers.IO) {
+                mutex.withLock {
+                    check(!closed) { "The PDF is closed." }
+                    renderer.openPage(index).use { page ->
+                        val view = pdfViewport(page.width, page.height, request)
+                        val bitmap = createBitmap(view.width, view.height, Bitmap.Config.ARGB_8888)
+                        allocated = bitmap
+                        bitmap.eraseColor(Color.TRANSPARENT)
+                        Canvas(bitmap).drawRect(view.translateX, view.translateY,
+                            view.translateX + page.width * view.scaleX, view.translateY + page.height * view.scaleY,
+                            Paint().apply { color = Color.WHITE })
+                        val matrix = Matrix().apply { setValues(floatArrayOf(
+                            view.scaleX, 0f, view.translateX, 0f, view.scaleY, view.translateY, 0f, 0f, 1f)) }
+                        page.render(bitmap, null, matrix, PdfRenderer.Page.RENDER_MODE_FOR_DISPLAY)
+                        coroutineContext.ensureActive()
+                        bitmap
+                    }
                 }
             }
+        } catch (failure: Throwable) {
+            // Also covers cancellation while dispatching the finished bitmap back to the UI.
+            allocated?.recycle()
+            throw failure
         }
     }
     suspend fun release() = withContext(Dispatchers.IO) { mutex.withLock { close() } }
