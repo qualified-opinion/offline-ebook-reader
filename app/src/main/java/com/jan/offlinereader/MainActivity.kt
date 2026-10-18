@@ -79,10 +79,12 @@ private fun LibraryScreen(vm: ReaderViewModel) {
     var query by rememberSaveable { mutableStateOf("") }
     var deleting by remember { mutableStateOf<Book?>(null) }
     val importer = rememberLauncherForActivityResult(ActivityResultContracts.OpenMultipleDocuments()) { if (it.isNotEmpty()) vm.import(it) }
+    val exporter = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/zip")) { it?.let(vm::exportLibrary) }
     Scaffold(
         containerColor = MaterialTheme.colorScheme.background,
-        topBar = { TopAppBar(title = { Column { Text("Your library", fontFamily = FontFamily.Serif); Text("OFFLINE READER", style = MaterialTheme.typography.labelSmall, letterSpacing = 2.sp) } }) },
-        floatingActionButton = { ExtendedFloatingActionButton(onClick = { if (!busy) importer.launch(arrayOf("*/*")) }, icon = { Icon(Icons.Default.Add, null) }, text = { Text(if (busy) "Importing…" else "Import books") }) }
+        topBar = { TopAppBar(title = { Column { Text("Your library", fontFamily = FontFamily.Serif); Text("OFFLINE READER", style = MaterialTheme.typography.labelSmall, letterSpacing = 2.sp) } },
+            actions = { TextButton(onClick = { exporter.launch("Offline-Reader-library.zip") }, enabled = !busy) { Text("Export library") } }) },
+        floatingActionButton = { ExtendedFloatingActionButton(onClick = { if (!busy) importer.launch(arrayOf("*/*")) }, icon = { Icon(Icons.Default.Add, null) }, text = { Text(if (busy) "Working…" else "Import books") }) }
     ) { padding ->
         Column(Modifier.fillMaxSize().padding(padding)) {
             OutlinedTextField(query, { query = it }, placeholder = { Text("Search title or author") }, leadingIcon = { Icon(Icons.Default.Search, null) }, singleLine = true, modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 8.dp), shape = RoundedCornerShape(20.dp))
@@ -102,7 +104,7 @@ private fun LibraryScreen(vm: ReaderViewModel) {
                 LazyVerticalGrid(columns = GridCells.Adaptive(155.dp), contentPadding = PaddingValues(20.dp, 12.dp, 20.dp, 104.dp), horizontalArrangement = Arrangement.spacedBy(16.dp), verticalArrangement = Arrangement.spacedBy(24.dp)) {
                     items(filtered, key = { it.id }) { book ->
                         Column {
-                            Card(onClick = { vm.open(book) }, shape = RoundedCornerShape(10.dp)) {
+                            Card(onClick = { vm.open(book) }, enabled = !busy, shape = RoundedCornerShape(10.dp)) {
                                 Box(Modifier.fillMaxWidth().aspectRatio(.72f).background(MaterialTheme.colorScheme.surfaceVariant), contentAlignment = Alignment.Center) {
                                     if (book.cover != null) CoverImage(File(book.directory, book.cover), Modifier.fillMaxSize(), book.title)
                                     else Column(Modifier.padding(16.dp), horizontalAlignment = Alignment.CenterHorizontally) {
