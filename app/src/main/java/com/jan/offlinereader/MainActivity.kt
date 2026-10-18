@@ -79,11 +79,20 @@ private fun LibraryScreen(vm: ReaderViewModel) {
     var query by rememberSaveable { mutableStateOf("") }
     var deleting by remember { mutableStateOf<Book?>(null) }
     val importer = rememberLauncherForActivityResult(ActivityResultContracts.OpenMultipleDocuments()) { if (it.isNotEmpty()) vm.import(it) }
+    var libraryMenu by remember { mutableStateOf(false) }
+    var restoring by rememberSaveable { mutableStateOf<android.net.Uri?>(null) }
+    val restorer = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { restoring = it }
     val exporter = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/zip")) { it?.let(vm::exportLibrary) }
     Scaffold(
         containerColor = MaterialTheme.colorScheme.background,
         topBar = { TopAppBar(title = { Column { Text("Your library", fontFamily = FontFamily.Serif); Text("OFFLINE READER", style = MaterialTheme.typography.labelSmall, letterSpacing = 2.sp) } },
-            actions = { TextButton(onClick = { exporter.launch("Offline-Reader-library.zip") }, enabled = !busy) { Text("Export library") } }) },
+            actions = {
+                IconButton(onClick = { libraryMenu = true }, enabled = !busy) { Icon(Icons.Default.MoreVert, "Library actions") }
+                DropdownMenu(expanded = libraryMenu, onDismissRequest = { libraryMenu = false }) {
+                    DropdownMenuItem(text = { Text("Export library") }, onClick = { libraryMenu = false; exporter.launch("Offline-Reader-library.zip") })
+                    DropdownMenuItem(text = { Text("Import library") }, onClick = { libraryMenu = false; restorer.launch(arrayOf("*/*")) })
+                }
+            }) },
         floatingActionButton = { ExtendedFloatingActionButton(onClick = { if (!busy) importer.launch(arrayOf("*/*")) }, icon = { Icon(Icons.Default.Add, null) }, text = { Text(if (busy) "Working…" else "Import books") }) }
     ) { padding ->
         Column(Modifier.fillMaxSize().padding(padding)) {
@@ -128,6 +137,10 @@ private fun LibraryScreen(vm: ReaderViewModel) {
             }
         }
     }
+    restoring?.let { uri -> AlertDialog(onDismissRequest = { restoring = null }, title = { Text("Restore library?") },
+        text = { Text("Add missing books and replace saved positions, bookmarks and reading preferences for matching books. Other books stay. Export your current library first if you want to keep its reading state.") },
+        confirmButton = { TextButton(onClick = { restoring = null; vm.importLibrary(uri) }) { Text("Restore") } },
+        dismissButton = { TextButton(onClick = { restoring = null }) { Text("Cancel") } }) }
     deleting?.let { book -> AlertDialog(onDismissRequest = { deleting = null }, title = { Text("Remove book?") }, text = { Text("Remove “${book.title}” and its bookmarks from this library? The original file in Downloads or Files is kept.") }, confirmButton = { TextButton(onClick = { vm.delete(book); deleting = null }) { Text("Remove") } }, dismissButton = { TextButton(onClick = { deleting = null }) { Text("Cancel") } }) }
 }
 

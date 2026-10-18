@@ -99,6 +99,22 @@ class ReaderViewModel(application: Application, private val savedState: SavedSta
             }
         }
     } }
+    fun importLibrary(uri: Uri) { viewModelScope.launch {
+        importMutex.withLock {
+            _busy.value = true
+            try {
+                saver.awaitPendingSaves()
+                latest = null
+                val count = withContext(Dispatchers.IO) {
+                    val input = app.contentResolver.openInputStream(uri) ?: error("The archive could not be opened.")
+                    LibraryImport(app.database, repository, app.cacheDir).read(input)
+                }
+                _message.value = "Library restored: $count books."
+            } catch (e: CancellationException) { throw e }
+            catch (e: Exception) { _message.value = "Couldn't restore the library. ${e.message ?: "Check the file and free storage, then try again."}" }
+            finally { _busy.value = false }
+        }
+    } }
     fun position(index: Int, offset: Int, progress: Float) {
         val book = _active.value ?: return
         latest = ReadingPosition(book.id, index.coerceIn(0, book.units - 1), offset.coerceAtLeast(0), progress.coerceIn(0f, 1f))
