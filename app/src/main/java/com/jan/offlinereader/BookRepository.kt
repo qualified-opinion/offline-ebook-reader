@@ -16,6 +16,9 @@ import org.jsoup.nodes.TextNode
 import org.jsoup.parser.Parser
 import java.io.*
 import java.net.URI
+import java.nio.charset.CharacterCodingException
+import java.nio.charset.Charset
+import java.nio.charset.CodingErrorAction
 import java.security.MessageDigest
 import java.util.UUID
 import java.util.zip.ZipFile
@@ -33,8 +36,18 @@ class BookRepository(private val context: Context, private val dao: ReaderDao) {
 
     suspend fun import(uri: Uri, sourceName: String? = null): ImportResult = withContext(Dispatchers.IO) {
         val name = sourceName ?: displayName(uri)
-        val extension = name.substringAfterLast('.', "").lowercase()
-        require(extension in setOf("epub", "pdf", "txt", "md", "html", "htm", "fb2")) {
+        val namedExtension = name.substringAfterLast('.', "").lowercase()
+        val extension = namedExtension.takeIf { it in setOf("epub", "pdf", "txt", "md", "html", "htm", "fb2") }
+            ?: when (context.contentResolver.getType(uri)?.substringBefore(';')?.trim()?.lowercase()) {
+                "application/epub+zip" -> "epub"
+                "application/pdf" -> "pdf"
+                "text/plain" -> "txt"
+                "text/markdown" -> "md"
+                "text/html" -> "html"
+                "application/x-fictionbook+xml" -> "fb2"
+                else -> null
+            }
+        require(extension != null) {
             "Choose an EPUB, PDF, TXT, Markdown, HTML, or FB2 file. MOBI, AZW and DRM-protected books aren't supported."
         }
         val id = UUID.randomUUID().toString()
@@ -105,7 +118,7 @@ class BookRepository(private val context: Context, private val dao: ReaderDao) {
                         else -> {
                             writer.mark(title)
                             // Fixed-size reads avoid allocating an entire huge line or book.
-                            file.bufferedReader(Charsets.UTF_8).use { input ->
+                            file.bufferedReader(textCharset(file)).use { input ->
                                 val buffer = CharArray(8192)
                                 var carry = ""
                                 var first = true
@@ -132,6 +145,22 @@ class BookRepository(private val context: Context, private val dao: ReaderDao) {
         } catch (e: Exception) {
             dir.deleteRecursively()
             throw e
+        }
+    }
+
+    private fun textCharset(file: File): Charset {
+        val decoder = Charsets.UTF_8.newDecoder()
+            .onMalformedInput(CodingErrorAction.REPORT)
+            .onUnmappableCharacter(CodingErrorAction.REPORT)
+        return try {
+            // Scan in bounded chunks, including the end of the file, before indexing.
+            InputStreamReader(file.inputStream(), decoder).use { reader ->
+                val buffer = CharArray(8192)
+                while (reader.read(buffer) != -1) { /* Validate without retaining the book. */ }
+            }
+            Charsets.UTF_8
+        } catch (_: CharacterCodingException) {
+            Charset.forName("windows-1252")
         }
     }
 
