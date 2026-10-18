@@ -2,7 +2,8 @@ package com.jan.offlinereader
 
 /** Small, stable text units keep lazy rendering and bookmarks independent of pagination. */
 object TextChunks {
-    fun split(text: String, limit: Int = 700): List<String> {
+    const val DEFAULT_LIMIT = 700
+    fun split(text: String, limit: Int = DEFAULT_LIMIT): List<String> {
         require(limit > 1)
         val chunks = mutableListOf<String>()
         var start = 0
