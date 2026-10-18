@@ -1,6 +1,8 @@
 package com.jan.offlinereader
 
+import android.app.Activity
 import android.os.Bundle
+import android.view.Window
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
@@ -21,6 +23,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalView
+import androidx.core.view.WindowCompat
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -44,12 +48,21 @@ fun readerColors(theme: String) = when (theme) {
     "Light" -> lightColorScheme(primary = Color(0xFF526747), background = Color(0xFFFCFCF8), surface = Color(0xFFF5F5EE), onBackground = Color(0xFF292E26), onSurface = Color(0xFF292E26))
     else -> lightColorScheme(primary = Color(0xFF596B46), background = Color(0xFFF4EDDD), surface = Color(0xFFECE4D2), onBackground = Color(0xFF3D392F), onSurface = Color(0xFF3D392F))
 }
+internal fun applyReaderStatusBar(window: Window, theme: String) {
+    // "Light status bars" means dark foreground icons on a light background.
+    WindowCompat.getInsetsController(window, window.decorView).isAppearanceLightStatusBars = theme != "Dark"
+}
+
 @Composable
 fun ReaderApp(vm: ReaderViewModel = viewModel()) {
     val preferences by vm.preferences.collectAsStateWithLifecycle()
     val active by vm.active.collectAsStateWithLifecycle()
     val message by vm.message.collectAsStateWithLifecycle()
     val snackbar = remember { SnackbarHostState() }
+    val view = LocalView.current
+    SideEffect {
+        (view.context as? Activity)?.window?.let { applyReaderStatusBar(it, preferences.theme) }
+    }
     MaterialTheme(colorScheme = readerColors(preferences.theme)) {
         LaunchedEffect(message) { message?.let { snackbar.showSnackbar(it); vm.clearMessage() } }
         Box(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background).safeDrawingPadding()) {
