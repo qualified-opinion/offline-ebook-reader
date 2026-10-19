@@ -49,6 +49,8 @@ Choose **Import library** from the same menu, select the exported ZIP, and confi
 and bookmarks. Reading preferences are restored, and unrelated books stay. Export
 your current library first to keep a copy of its state. Invalid archives are rejected
 and newly added books are removed if restore fails.
+If a newer app version splits a book into passages differently, the book is still
+restored and its reading position and bookmarks are moved to the nearest matching spot.
 
 ## Supported content
 
