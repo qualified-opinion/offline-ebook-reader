@@ -76,14 +76,74 @@ class LibraryImportTest {
         assertArrayEquals(entries.getValue("books/${saved.sha256}/original.txt"), File(restored.directory, "original.txt").readBytes())
         assertEquals(saved.title, repository.document(restored).contents.first().title)
     }
-    @Test fun repeatRestoreReplacesBookmarksAndKeepsUnrelatedBooks() = runBlocking {
+    @Test fun repeatRestoreMergesBookmarksAndKeepsUnrelatedBooks() = runBlocking {
         val saved = book()
         database.dao().bookmark(Bookmark(bookId = saved.id, position = 1, offset = 4, label = "Saved"))
         val entries = archive()
+        database.dao().clearBookmarks(saved.id)
+        database.dao().bookmark(Bookmark(bookId = saved.id, position = 2, offset = 40, label = "Phone"))
         val unrelated = book("Another book")
+        database.dao().bookmark(Bookmark(bookId = unrelated.id, position = 0, offset = 0, label = "Other"))
         restore(entries); restore(entries)
         assertEquals(setOf(saved.id, unrelated.id), database.dao().snapshotBooks().map { it.id }.toSet())
-        assertEquals(1, database.dao().snapshotBookmarks().size)
+        val marks = database.dao().snapshotBookmarks()
+        assertEquals(setOf("Saved", "Phone"), marks.filter { it.bookId == saved.id }.map { it.label }.toSet())
+        assertEquals(3, marks.size)
+        assertEquals("Other", marks.single { it.bookId == unrelated.id }.label)
+    }
+    @Test fun newerPhoneReadingStateSurvivesOlderBackup() = runBlocking {
+        val saved = book().copy(position = 1, offset = 8, progress = .1f, lastRead = 100)
+        database.dao().updateBook(saved)
+        val entries = archive()
+        val further = saved.copy(position = 4, offset = 55, progress = .5f, lastRead = 200)
+        database.dao().updateBook(further)
+        restore(entries)
+        assertEquals(further, database.dao().book(saved.id))
+        // Newer means last saved, even if the reader moved back in the book.
+        val phone = saved.copy(position = 0, offset = 3, progress = .02f, lastRead = 200)
+        database.dao().updateBook(phone)
+        restore(entries)
+        assertEquals(phone, database.dao().book(saved.id))
+    }
+    @Test fun newerBackupReadingStateReplacesPhoneState() = runBlocking {
+        val saved = book().copy(position = 3, offset = 44, progress = .7f, lastRead = 200)
+        database.dao().updateBook(saved)
+        val entries = archive()
+        database.dao().updateBook(saved.copy(position = 1, offset = 2, progress = .1f, lastRead = 100))
+        restore(entries)
+        assertEquals(saved, database.dao().book(saved.id))
+    }
+    @Test fun equalSaveTimesUseBackupReadingState() = runBlocking {
+        val saved = book().copy(position = 2, offset = 31, progress = .4f, lastRead = 100)
+        database.dao().updateBook(saved)
+        val entries = archive()
+        database.dao().updateBook(saved.copy(position = 0, offset = 0, progress = 0f))
+        restore(entries)
+        assertEquals(saved, database.dao().book(saved.id))
+    }
+    @Test fun bookmarkMergeUsesReaderOffsetBoundaryAndKeepsPhoneLabels() = runBlocking {
+        val saved = book()
+        val entries = archive()
+        database.dao().bookmark(Bookmark(bookId = saved.id, position = 1, offset = 100, label = "Phone", created = 123))
+        changeMetadata(entries) { json ->
+            val marks = json.getJSONArray("books").getJSONObject(0).getJSONArray("bookmarks")
+            fun mark(position: Int, offset: Int, label: String) {
+                marks.put(JSONObject().put("position", position).put("offset", offset)
+                    .put("label", label).put("created", 456))
+            }
+            mark(1, 100, "Exact duplicate")
+            mark(1, 81, "19 below")
+            mark(1, 119, "19 above")
+            mark(1, 80, "20 below")
+            mark(1, 120, "20 above")
+            mark(2, 100, "Different passage")
+            mark(2, 110, "Duplicate within backup")
+        }
+        restore(entries); restore(entries)
+        val marks = database.dao().snapshotBookmarks()
+        assertEquals(setOf("Phone", "20 below", "20 above", "Different passage"), marks.map { it.label }.toSet())
+        assertEquals(4, marks.size)
+        assertEquals(123L, marks.single { it.label == "Phone" }.created)
     }
     @Test fun invalidLaterRecordRollsBackNewBooksAndPreservesExistingState() = runBlocking {
         val first = book(); val second = book("Different text. ".repeat(300))

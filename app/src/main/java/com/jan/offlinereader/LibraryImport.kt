@@ -113,9 +113,33 @@ internal class LibraryImport(private val database: ReaderDatabase, private val r
             withContext(NonCancellable) {
                 database.withTransaction {
                     val dao = database.dao()
+                    val addedIds = added.map { it.id }.toSet()
+                    val existingMarks = dao.snapshotBookmarks().groupBy { it.bookId }
                     for ((book, marks) in restored) {
-                        dao.updateBook(book); dao.clearBookmarks(book.id)
-                        marks.forEach { dao.bookmark(it) }
+                        val current = if (book.id in addedIds) null else dao.book(book.id)
+                        val merged = if (current != null && current.lastRead > book.lastRead) {
+                            book.copy(position = current.position, offset = current.offset,
+                                progress = current.progress, lastRead = current.lastRead)
+                        } else book
+                        dao.updateBook(merged)
+                        if (current == null) {
+                            dao.clearBookmarks(book.id)
+                            marks.forEach { dao.bookmark(it) }
+                        } else {
+                            // Match the reader's duplicate rule, including marks added in this restore.
+                            val offsets = mutableMapOf<Int, java.util.TreeSet<Long>>()
+                            fun remember(mark: Bookmark) {
+                                offsets.getOrPut(mark.position) { java.util.TreeSet() }.add(mark.offset.toLong())
+                            }
+                            existingMarks[book.id].orEmpty().forEach(::remember)
+                            for (mark in marks) {
+                                val nearby = offsets[mark.position]?.ceiling(mark.offset.toLong() - 19)
+                                if (nearby == null || nearby >= mark.offset.toLong() + 20) {
+                                    dao.bookmark(mark)
+                                    remember(mark)
+                                }
+                            }
+                        }
                     }
                     dao.preferences(preferences)
                 }
