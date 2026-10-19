@@ -122,14 +122,15 @@ class ReaderViewModel(application: Application, private val savedState: SavedSta
     }
     fun flush() { latest?.let { saver.enqueue(it) } }
     override fun onCleared() { flush(); super.onCleared() }
-    fun bookmark() {
+    fun bookmark(contents: List<ContentsEntry> = emptyList()) {
         val p = latest ?: return
         if (_bookmarks.value.any { it.position == p.index && kotlin.math.abs(it.offset - p.offset) < 20 }) {
             _message.value = "This spot is already bookmarked."; return
         }
+        val label = bookmarkLabel(_active.value?.format, p.index, p.progress, contents)
         viewModelScope.launch {
             dao.bookmark(Bookmark(bookId = p.bookId, position = p.index, offset = p.offset,
-                label = if (_active.value?.format == "PDF") "Page ${p.index + 1}" else "Reading spot · ${(p.progress * 100).toInt()}%"))
+                label = label))
             _message.value = "Bookmark saved."
         }
     }
