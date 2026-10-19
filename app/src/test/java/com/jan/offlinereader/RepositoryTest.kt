@@ -320,13 +320,44 @@ class RepositoryTest {
         writeRepeatedImageEpub("illustrated.epub", image)
 
         val book = repository.import(uri("illustrated.epub")).book
-        val images = repository.document(book).blocks.mapNotNull { it.image }
+        val blocks = repository.document(book).blocks
+        val images = blocks.mapNotNull { it.image }
         assertEquals(200, images.size)
         assertEquals(1, images.distinct().size)
         assertEquals(book.cover, images.first())
         val saved = File(book.directory).listFiles()!!.filter { it.name.startsWith("image-") }
         assertEquals(1, saved.size)
         assertArrayEquals(image, saved.single().readBytes())
+        assertTrue(blocks.filter { it.image != null }.all { it.imageWidth == 600 && it.imageHeight == 600 })
+        val indexed = org.json.JSONObject(File(book.directory, "index.json").readText()).getJSONArray("blocks")
+        val imageRecords = (0 until indexed.length()).map { indexed.getJSONObject(it) }
+            .filter { it.optString("image").isNotBlank() }
+        assertEquals(200, imageRecords.size)
+        assertTrue(imageRecords.all { it.getInt("imageWidth") == 600 && it.getInt("imageHeight") == 600 })
+    }
+
+    @Test fun legacyPictureIndexWithoutDimensionsStillLoads() = runBlocking {
+        org.robolectric.shadows.ShadowBitmapFactory.setAllowInvalidImageData(false)
+        val bitmap = android.graphics.Bitmap.createBitmap(80, 40, android.graphics.Bitmap.Config.ARGB_8888)
+        val bytes = java.io.ByteArrayOutputStream()
+        try { assertTrue(bitmap.compress(android.graphics.Bitmap.CompressFormat.PNG, 100, bytes)) }
+        finally { bitmap.recycle() }
+        writeRepeatedImageEpub("legacy.epub", bytes.toByteArray())
+        val book = repository.import(uri("legacy.epub")).book
+        val original = repository.document(book)
+        assertTrue(original.blocks.filter { it.image != null }.all { it.imageWidth == 80 && it.imageHeight == 40 })
+        val file = File(book.directory, "index.json")
+        val json = org.json.JSONObject(file.readText())
+        val records = json.getJSONArray("blocks")
+        repeat(records.length()) { i -> records.getJSONObject(i).apply {
+            remove("imageWidth"); remove("imageHeight")
+        } }
+        file.writeText(json.toString())
+        val legacy = repository.document(book)
+        assertEquals(original.copy(blocks = original.blocks.map { it.copy(imageWidth = 0, imageHeight = 0) }), legacy)
+        assertTrue(legacy.blocks.filter { it.image != null }.all {
+            imageDisplayHeight(360f, it.imageWidth, it.imageHeight) == null
+        })
     }
 
     @Test fun repeatedUndecodableEpubImageIsCachedAsMissing() = runBlocking {

@@ -220,8 +220,8 @@ class BookRepository(private val context: Context, private val dao: ReaderDao) {
         var cover: String? = null
         val coverId = opf.select("meta[name=cover]").firstOrNull()?.attr("content")
         val coverItem = items.values.firstOrNull { "cover-image" in it.attr("properties").split(' ') } ?: items[coverId]
-        val imageCache = mutableMapOf<String, String?>()
-        fun image(path: String): String? {
+        val imageCache = mutableMapOf<String, Block?>()
+        fun image(path: String): Block? {
             // containsKey also recognizes a cached failure (null).
             if (imageCache.containsKey(path)) return imageCache[path]
             val saved = runCatching {
@@ -231,12 +231,12 @@ class BookRepository(private val context: Context, private val dao: ReaderDao) {
                 if (bounds.outWidth <= 0 || bounds.outHeight <= 0) return@runCatching null
                 val filename = "image-${MessageDigest.getInstance("SHA-256").digest(path.toByteArray()).take(12).joinToString("") { "%02x".format(it) }}"
                 File(dir, filename).writeBytes(data)
-                filename
+                Block(image = filename, imageWidth = bounds.outWidth, imageHeight = bounds.outHeight)
             }.getOrNull()
             imageCache[path] = saved
             return saved
         }
-        coverItem?.let { cover = image(resolve(opfPath, it.attr("href"))) }
+        coverItem?.let { cover = image(resolve(opfPath, it.attr("href")))?.image }
         val fallback = mutableListOf<ContentsEntry>()
         opf.select("spine > itemref").filter { it.attr("linear") != "no" }.forEachIndexed { index, ref ->
             val item = items[ref.attr("idref")] ?: error("The EPUB has a broken reading order.")
@@ -274,7 +274,8 @@ class BookRepository(private val context: Context, private val dao: ReaderDao) {
         val blocks = json.getJSONArray("blocks")
         val toc = json.getJSONArray("contents")
         TextDocument((0 until blocks.length()).map { i -> blocks.getJSONObject(i).let {
-            Block(it.getLong("start"), it.getInt("length"), it.optBoolean("heading"), it.optString("image").ifBlank { null })
+            Block(it.getLong("start"), it.getInt("length"), it.optBoolean("heading"), it.optString("image").ifBlank { null },
+                it.optInt("imageWidth"), it.optInt("imageHeight"))
         } }, (0 until toc.length()).map { i -> toc.getJSONObject(i).let { ContentsEntry(it.getString("title"), it.getInt("position")) } })
     }
     suspend fun text(book: Book, block: Block): String = withContext(Dispatchers.IO) {
@@ -320,7 +321,7 @@ private class IndexWriter(dir: File) : Closeable {
             output.write(bytes); blocks += Block(offset, bytes.size, heading); offset += bytes.size
         }
     }
-    fun html(root: Element, path: String, image: (String) -> String? = { null }) {
+    fun html(root: Element, path: String, image: (String) -> Block? = { null }) {
         root.select("script, style, noscript").remove()
         val paragraph = StringBuilder()
         var heading = false
@@ -334,7 +335,7 @@ private class IndexWriter(dir: File) : Closeable {
             if (tag.matches(Regex("h[1-6]")) || tag == "title" || tag == "subtitle") heading = true
             if (tag == "img") {
                 flush()
-                image(element.attr("src"))?.let { blocks += Block(image = it) }
+                image(element.attr("src"))?.let { blocks += it }
                     ?: text(element.attr("alt"))
             } else if (tag == "br") paragraph.append('\n')
             else element.childNodes().forEach { node ->
@@ -354,7 +355,12 @@ private class IndexWriter(dir: File) : Closeable {
     fun finish() {
         output.flush()
         val json = JSONObject()
-        json.put("blocks", JSONArray().apply { blocks.forEach { b -> put(JSONObject().put("start", b.start).put("length", b.length).put("heading", b.heading).put("image", b.image ?: "")) } })
+        json.put("blocks", JSONArray().apply { blocks.forEach { b ->
+            put(JSONObject().put("start", b.start).put("length", b.length).put("heading", b.heading)
+                .put("image", b.image ?: "").apply {
+                    if (b.image != null) { put("imageWidth", b.imageWidth); put("imageHeight", b.imageHeight) }
+                })
+        } })
         json.put("contents", JSONArray().apply { contents.forEach { c -> put(JSONObject().put("title", c.title).put("position", c.position)) } })
         index.writeText(json.toString())
     }

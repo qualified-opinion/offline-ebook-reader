@@ -22,6 +22,12 @@ object TextChunks {
     }
 }
 data class Block(val start: Long = 0, val length: Int = 0, val heading: Boolean = false,
-    val image: String? = null)
+    val image: String? = null, val imageWidth: Int = 0, val imageHeight: Int = 0)
+
+/** Unknown dimensions retain the legacy loading layout; known pictures reserve their final height. */
+internal fun imageDisplayHeight(widthDp: Float, imageWidth: Int, imageHeight: Int): Float? {
+    if (!widthDp.isFinite() || widthDp <= 0 || imageWidth <= 0 || imageHeight <= 0) return null
+    return minOf(500.0, widthDp.toDouble() * imageHeight / imageWidth).toFloat()
+}
 data class ContentsEntry(val title: String, val position: Int)
 data class TextDocument(val blocks: List<Block>, val contents: List<ContentsEntry>)
