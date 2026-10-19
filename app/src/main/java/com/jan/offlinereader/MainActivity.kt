@@ -138,7 +138,7 @@ private fun LibraryScreen(vm: ReaderViewModel) {
         }
     }
     restoring?.let { uri -> AlertDialog(onDismissRequest = { restoring = null }, title = { Text("Restore library?") },
-        text = { Text("Add missing books and replace saved positions, bookmarks and reading preferences for matching books. Other books stay. Export your current library first if you want to keep its reading state.") },
+        text = { Text("Add missing books. For matching books, keep the most recently saved reading position and merge bookmarks. Reading preferences are replaced by the backup's. Other books stay. Export your current library first to keep a copy.") },
         confirmButton = { TextButton(onClick = { restoring = null; vm.importLibrary(uri) }) { Text("Restore") } },
         dismissButton = { TextButton(onClick = { restoring = null }) { Text("Cancel") } }) }
     deleting?.let { book -> AlertDialog(onDismissRequest = { deleting = null }, title = { Text("Remove book?") }, text = { Text("Remove “${book.title}” and its bookmarks from this library? The original file in Downloads or Files is kept.") }, confirmButton = { TextButton(onClick = { vm.delete(book); deleting = null }) { Text("Remove") } }, dismissButton = { TextButton(onClick = { deleting = null }) { Text("Cancel") } }) }
