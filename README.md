@@ -7,7 +7,7 @@ INTERNET, analytics, account, cloud backup, or broad storage permissions.
 ## Build and install
 
 1. Clone or download this repository, then open its root folder in Android Studio.
-2. Use JDK 17 and install Android SDK Platform 35. Allow the first Gradle sync to
+2. Use JDK 17 and install Android SDK Platform 36. Allow the first Gradle sync to
    download dependencies. Building requires internet once; using the installed app does not.
 3. Run on a connected Android device, or select **Build > Build APK(s)**.
 
@@ -17,6 +17,11 @@ Command line (Windows: use `gradlew.bat`):
 ./gradlew testDebugUnitTest lintDebug assembleDebug
 adb install app/build/outputs/apk/debug/app-debug.apk
 ```
+
+The pinned build uses AGP 8.10.1, Gradle 8.11.1, SDK Build Tools 35.0.0 and JDK 17.
+The app compiles against and targets Android 16 (API 36); Android 8.0 (API 26)
+remains the minimum supported version. Kotlin, KSP, Compose and Room versions are
+unchanged by this SDK update.
 
 A GitHub Actions workflow is included. Put the contents of this folder at a repository's
 root, then push or run **Build Android APK**. Download the `Offline-Reader-debug-apk`
@@ -112,5 +117,7 @@ than automatically tracking the latest releases. Room schemas are exported under
 
 ## Validation
 
-See `VALIDATION.md` for actual build results and the device acceptance checklist.
+See `VALIDATION.md` for build results and the device acceptance checklist. The Android 16
+upgrade still requires the full checklist on an Android 16 device or emulator, including
+back gestures, bottom sheets, edge-to-edge insets and full-screen reading.
 
