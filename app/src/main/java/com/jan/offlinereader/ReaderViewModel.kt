@@ -10,11 +10,13 @@ import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 
-class ReaderViewModel(application: Application, private val savedState: SavedStateHandle) : AndroidViewModel(application) {
+class ReaderViewModel internal constructor(application: Application, private val savedState: SavedStateHandle,
+    private val dao: ReaderDao, private val saver: PositionSaver,
+    val repository: BookRepository) : AndroidViewModel(application) {
+    constructor(application: Application, savedState: SavedStateHandle) : this(application, savedState,
+        (application as ReaderApplication).database.dao(), application.positionSaver, application.repository)
+
     private val app = application as ReaderApplication
-    val repository = app.repository
-    private val dao = app.database.dao()
-    private val saver = app.positionSaver
     val books = dao.books().stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
     val preferences = dao.preferences().map { it ?: Preferences() }.stateIn(viewModelScope, SharingStarted.Eagerly, Preferences())
     private val _active = MutableStateFlow<Book?>(null)
