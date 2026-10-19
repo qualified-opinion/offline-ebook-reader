@@ -23,6 +23,32 @@ import java.security.MessageDigest
 import java.util.UUID
 import java.util.zip.ZipFile
 
+/** Only sniff formats with a reliable signature; unknown data must not become TXT. */
+internal fun detectBookExtension(file: File): String? {
+    val header = ByteArray(5)
+    file.inputStream().use { input ->
+        var count = 0
+        while (count < header.size) {
+            val read = input.read(header, count, header.size - count)
+            if (read < 0) break
+            count += read
+        }
+    }
+    if (header.contentEquals("%PDF-".toByteArray(Charsets.US_ASCII))) return "pdf"
+    if (!header.take(4).toByteArray().contentEquals(byteArrayOf(80, 75, 3, 4))) return null
+    return try {
+        ZipFile(file).use { zip ->
+            val entries = zip.entries()
+            val first = if (entries.hasMoreElements()) entries.nextElement() else null
+            val hasMimeType = first?.name == "mimetype" && zip.getInputStream(first).use { input ->
+                // At most 21 bytes, even for a huge or malicious mimetype entry.
+                "application/epub+zip".all { input.read() == it.code } && input.read() == -1
+            }
+            if (hasMimeType || zip.getEntry("META-INF/container.xml")?.isDirectory == false) "epub" else null
+        }
+    } catch (_: IOException) { null }
+}
+
 class BookRepository(private val context: Context, private val dao: ReaderDao) {
     private val root = File(context.filesDir, "books").apply { mkdirs() }
 
@@ -37,7 +63,8 @@ class BookRepository(private val context: Context, private val dao: ReaderDao) {
     suspend fun import(uri: Uri, sourceName: String? = null): ImportResult = withContext(Dispatchers.IO) {
         val name = sourceName ?: displayName(uri)
         val namedExtension = name.substringAfterLast('.', "").lowercase()
-        val extension = namedExtension.takeIf { it in setOf("epub", "pdf", "txt", "md", "html", "htm", "fb2") }
+            .takeIf { it in setOf("epub", "pdf", "txt", "md", "html", "htm", "fb2") }
+        val reportedExtension = namedExtension
             ?: when (context.contentResolver.getType(uri)?.substringBefore(';')?.trim()?.lowercase()) {
                 "application/epub+zip" -> "epub"
                 "application/pdf" -> "pdf"
@@ -47,16 +74,13 @@ class BookRepository(private val context: Context, private val dao: ReaderDao) {
                 "application/x-fictionbook+xml" -> "fb2"
                 else -> null
             }
-        require(extension != null) {
-            "Choose an EPUB, PDF, TXT, Markdown, HTML, or FB2 file. MOBI, AZW and DRM-protected books aren't supported."
-        }
         val id = UUID.randomUUID().toString()
         val dir = File(root, id).apply { mkdirs() }
         try {
-            val file = File(dir, "original.$extension")
+            val copied = File(dir, "incoming")
             val digest = MessageDigest.getInstance("SHA-256")
             context.contentResolver.openInputStream(uri)?.use { input ->
-                file.outputStream().buffered().use { output ->
+                copied.outputStream().buffered().use { output ->
                     val buffer = ByteArray(64 * 1024)
                     var total = 0L
                     while (true) {
@@ -68,9 +92,15 @@ class BookRepository(private val context: Context, private val dao: ReaderDao) {
                     }
                 }
             } ?: error("The selected file is no longer available. Please select it again.")
+            val extension = reportedExtension ?: detectBookExtension(copied)
+            require(extension != null) {
+                "Choose an EPUB, PDF, TXT, Markdown, HTML, or FB2 file. MOBI, AZW and DRM-protected books aren't supported."
+            }
+            val file = File(dir, "original.$extension")
+            check(copied.renameTo(file)) { "The imported file could not be prepared." }
             val hash = digest.digest().joinToString("") { "%02x".format(it) }
             dao.byHash(hash)?.let { dir.deleteRecursively(); return@withContext ImportResult(it, alreadyPresent = true) }
-            var title = name.substringBeforeLast('.', name)
+            var title = if (namedExtension != null) name.substringBeforeLast('.') else name
             var author = ""
             var cover: String? = null
             val units: Int
