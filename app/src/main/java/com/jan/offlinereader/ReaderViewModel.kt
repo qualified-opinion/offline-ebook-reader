@@ -10,11 +10,13 @@ import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 
-class ReaderViewModel(application: Application, private val savedState: SavedStateHandle) : AndroidViewModel(application) {
+class ReaderViewModel internal constructor(application: Application, private val savedState: SavedStateHandle,
+    private val dao: ReaderDao, private val saver: PositionSaver,
+    val repository: BookRepository) : AndroidViewModel(application) {
+    constructor(application: Application, savedState: SavedStateHandle) : this(application, savedState,
+        (application as ReaderApplication).database.dao(), application.positionSaver, application.repository)
+
     private val app = application as ReaderApplication
-    val repository = app.repository
-    private val dao = app.database.dao()
-    private val saver = app.positionSaver
     val books = dao.books().stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
     val preferences = dao.preferences().map { it ?: Preferences() }.stateIn(viewModelScope, SharingStarted.Eagerly, Preferences())
     private val _active = MutableStateFlow<Book?>(null)
@@ -70,6 +72,51 @@ class ReaderViewModel(application: Application, private val savedState: SavedSta
             }
         }
     }
+    fun exportLibrary(uri: Uri) { viewModelScope.launch {
+        importMutex.withLock {
+            _busy.value = true
+            var complete = false
+            try {
+                saver.awaitPendingSaves()
+                withContext(Dispatchers.IO) {
+                    val output = app.contentResolver.openOutputStream(uri, "w") ?: error("The export file could not be opened.")
+                    LibraryExport(app.database).write(output)
+                }
+                complete = true
+                _message.value = "Library exported."
+            } catch (e: CancellationException) { throw e }
+            catch (e: Exception) {
+                val reason = when (e) {
+                    is SecurityException -> "Access to the destination was denied. Choose another folder."
+                    is java.io.IOException -> "Check the destination and your device's free storage."
+                    else -> e.message ?: "Please choose another destination and try again."
+                }
+                _message.value = "Couldn't export the library. $reason"
+            }
+            finally {
+                if (!complete) withContext(NonCancellable + Dispatchers.IO) {
+                    runCatching { android.provider.DocumentsContract.deleteDocument(app.contentResolver, uri) }
+                }
+                _busy.value = false
+            }
+        }
+    } }
+    fun importLibrary(uri: Uri) { viewModelScope.launch {
+        importMutex.withLock {
+            _busy.value = true
+            try {
+                saver.awaitPendingSaves()
+                latest = null
+                val count = withContext(Dispatchers.IO) {
+                    val input = app.contentResolver.openInputStream(uri) ?: error("The archive could not be opened.")
+                    LibraryImport(app.database, repository, app.cacheDir).read(input)
+                }
+                _message.value = "Library restored: $count books."
+            } catch (e: CancellationException) { throw e }
+            catch (e: Exception) { _message.value = "Couldn't restore the library. ${e.message ?: "Check the file and free storage, then try again."}" }
+            finally { _busy.value = false }
+        }
+    } }
     fun position(index: Int, offset: Int, progress: Float) {
         val book = _active.value ?: return
         latest = ReadingPosition(book.id, index.coerceIn(0, book.units - 1), offset.coerceAtLeast(0), progress.coerceIn(0f, 1f))
@@ -77,21 +124,24 @@ class ReaderViewModel(application: Application, private val savedState: SavedSta
     }
     fun flush() { latest?.let { saver.enqueue(it) } }
     override fun onCleared() { flush(); super.onCleared() }
-    fun bookmark() {
+    fun bookmark(contents: List<ContentsEntry> = emptyList()) {
         val p = latest ?: return
         if (_bookmarks.value.any { it.position == p.index && kotlin.math.abs(it.offset - p.offset) < 20 }) {
             _message.value = "This spot is already bookmarked."; return
         }
+        val label = bookmarkLabel(_active.value?.format, p.index, p.progress, contents)
         viewModelScope.launch {
             dao.bookmark(Bookmark(bookId = p.bookId, position = p.index, offset = p.offset,
-                label = if (_active.value?.format == "PDF") "Page ${p.index + 1}" else "Reading spot · ${(p.progress * 100).toInt()}%"))
+                label = label))
             _message.value = "Bookmark saved."
         }
     }
     fun deleteBookmark(bookmark: Bookmark) { viewModelScope.launch { dao.deleteBookmark(bookmark.id) } }
     fun settings(value: Preferences) { viewModelScope.launch { dao.preferences(value) } }
     fun delete(book: Book) { viewModelScope.launch {
-        try { repository.delete(book) } catch (e: Exception) { _message.value = friendly(e) }
+        importMutex.withLock {
+            try { repository.delete(book) } catch (e: Exception) { _message.value = friendly(e) }
+        }
     } }
     fun error(e: Exception) { _message.value = friendly(e) }
     fun clearMessage() { _message.value = null }

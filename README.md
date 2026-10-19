@@ -42,6 +42,24 @@ Studio. A release build does not have a preconfigured signing key.
 - Use the three-dot button on a library card to remove the imported copy and its bookmarks.
   The original file is retained. Uninstalling the app deletes the private library.
 
+## Export and restore a library
+
+Open **Library actions** (the three dots at the top), tap **Export library** and choose a destination in Files
+(for example Downloads). The ZIP contains original books, metadata, saved reading
+positions, bookmarks and reading preferences. Automatic Android/cloud backups remain off.
+Exports are limited to 1 GB per original, 8 GB of original files in total, and 8 MB of metadata.
+
+Choose **Import library** from the same menu, select the exported ZIP, and confirm
+**Restore**. Missing books are added with their archived reading state. For matching books,
+the most recently saved reading position is kept (the backup wins if save times are equal),
+and bookmarks are merged without adding duplicates at the same passage/page and less than
+20 scroll-offset units apart. Existing bookmarks are kept. Reading preferences are restored,
+and unrelated books stay. Export
+your current library first to keep a copy of its state. Invalid archives are rejected
+and newly added books are removed if restore fails.
+If a newer app version splits a book into passages differently, the book is still
+restored and its reading position and bookmarks are moved to the nearest matching spot.
+
 ## Supported content
 
 | Format | Reading behavior |

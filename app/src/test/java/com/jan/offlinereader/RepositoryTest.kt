@@ -29,14 +29,15 @@ class RepositoryTest {
     private lateinit var database: ReaderDatabase
     private lateinit var sourceDir: File
     private lateinit var repository: BookRepository
-    private val mimeTypes = mutableMapOf<String, String>()
+    private val mimeTypes = mutableMapOf<String, String?>()
     @Before fun setup() {
         database = Room.databaseBuilder(context, ReaderDatabase::class.java, "test.db").allowMainThreadQueries().build()
         sourceDir = File(context.cacheDir, "sources").apply { mkdirs() }
         repository = BookRepository(context, database.dao())
         val provider = object : ContentProvider() {
             override fun onCreate() = true
-            override fun getType(uri: Uri) = mimeTypes[uri.lastPathSegment] ?: "application/octet-stream"
+            override fun getType(uri: Uri): String? =
+                if (mimeTypes.containsKey(uri.lastPathSegment)) mimeTypes[uri.lastPathSegment] else "application/octet-stream"
             override fun query(uri: Uri, projection: Array<out String>?, selection: String?, selectionArgs: Array<out String>?, sortOrder: String?): Cursor =
                 MatrixCursor(arrayOf(OpenableColumns.DISPLAY_NAME)).apply { addRow(arrayOf(uri.lastPathSegment)) }
             override fun openFile(uri: Uri, mode: String) = ParcelFileDescriptor.open(File(sourceDir, uri.lastPathSegment!!), ParcelFileDescriptor.MODE_READ_ONLY)
@@ -136,6 +137,78 @@ class RepositoryTest {
         assertEquals("EPUB", book.format)
         assertTrue(File(book.directory, "original.epub").exists())
         assertEquals("Shared EPUB content.", repository.text(book, repository.document(book).blocks.first()))
+    }
+
+    private fun extensionlessEpub(name: String, title: String = "", mimetype: Boolean = false) {
+        val entries = linkedMapOf<String, String>()
+        if (mimetype) entries["mimetype"] = "application/epub+zip"
+        entries["META-INF/container.xml"] = """<container><rootfiles><rootfile full-path="book.opf"/></rootfiles></container>"""
+        entries["book.opf"] = """<package><metadata><dc:title>$title</dc:title></metadata><manifest><item id="c" href="chapter.xhtml"/></manifest><spine><itemref idref="c"/></spine></package>"""
+        entries["chapter.xhtml"] = "<html><body><p>Content for $name.</p></body></html>"
+        writeEpub(name, entries)
+    }
+
+    @Test fun extensionlessEpubIsDetectedWithMissingOrGenericMime() = runBlocking {
+        listOf("My book" to null, "Another book" to "application/octet-stream").forEach { (name, mime) ->
+            extensionlessEpub(name, mimetype = true)
+            mimeTypes[name] = mime
+            val book = repository.import(uri(name)).book
+            assertEquals("EPUB", book.format)
+            assertEquals(name, book.title)
+            assertTrue(File(book.directory, "original.epub").exists())
+            assertEquals("Content for $name.", repository.text(book, repository.document(book).blocks.first()))
+        }
+    }
+
+    @Test fun extensionlessEpubContainerFallbackPreservesDottedTitleAndMetadata() = runBlocking {
+        extensionlessEpub("Dr. Who")
+        val fallback = repository.import(uri("Dr. Who")).book
+        assertEquals("Dr. Who", fallback.title)
+        extensionlessEpub("Dr. Who Metadata", title = "The Doctor's Adventures")
+        assertEquals("The Doctor's Adventures", repository.import(uri("Dr. Who Metadata")).book.title)
+    }
+
+    @Test fun onlyRecognisedFilenameEndingsAreStrippedFromTitles() = runBlocking {
+        File(sourceDir, "Dr. Who.txt").writeText("Text with a recognised ending.")
+        assertEquals("Dr. Who", repository.import(uri("Dr. Who.txt")).book.title)
+        File(sourceDir, "Dr. Who").writeText("Text identified by MIME type.")
+        mimeTypes["Dr. Who"] = "text/plain"
+        assertEquals("Dr. Who", repository.import(uri("Dr. Who")).book.title)
+    }
+
+    @Test fun pdfSignatureIsDetectedWithoutFilenameOrMime() {
+        // Exercise detection separately: Robolectric does not render a real PDF here.
+        val scan = File(sourceDir, "scan").apply { writeText("%PDF-1.7\n") }
+        assertEquals("pdf", detectBookExtension(scan))
+    }
+
+    @Test fun epubMimetypeSignatureIsExactAndBounded() {
+        writeEpub("mime-only", linkedMapOf("mimetype" to "application/epub+zip"))
+        assertEquals("epub", detectBookExtension(File(sourceDir, "mime-only")))
+        writeEpub("long-mime", linkedMapOf("mimetype" to ("application/epub+zip" + "x".repeat(100_000))))
+        assertNull(detectBookExtension(File(sourceDir, "long-mime")))
+        writeEpub("not-first", linkedMapOf("other" to "", "mimetype" to "application/epub+zip"))
+        assertNull(detectBookExtension(File(sourceDir, "not-first")))
+    }
+
+    @Test fun sniffingRejectsOrdinaryZipMalformedZipAndUnknownBinaryWithoutLeavingCopies() = runBlocking {
+        writeEpub("ordinary", linkedMapOf("notes.txt" to "A ZIP is not necessarily an EPUB."))
+        File(sourceDir, "broken").writeBytes(byteArrayOf(80, 75, 3, 4, 0, 0))
+        File(sourceDir, "binary").writeBytes(byteArrayOf(0, 1, 2, 3, 4))
+        File(sourceDir, "short").writeBytes(byteArrayOf(80, 75))
+        val root = File(context.filesDir, "books")
+        val before = root.listFiles()!!.map { it.name }.toSet()
+        for (name in listOf("ordinary", "broken", "binary", "short")) {
+            assertNull(detectBookExtension(File(sourceDir, name)))
+            try {
+                repository.import(uri(name))
+                fail("Unsupported $name was accepted")
+            } catch (e: IllegalArgumentException) {
+                assertTrue(e.message!!.startsWith("Choose an EPUB"))
+            }
+        }
+        assertEquals(before, root.listFiles()!!.map { it.name }.toSet())
+        assertTrue(database.dao().books().first().isEmpty())
     }
 
     @Test fun mimeFallbackSupportsTextMarkdownHtmlAndFb2() = runBlocking {

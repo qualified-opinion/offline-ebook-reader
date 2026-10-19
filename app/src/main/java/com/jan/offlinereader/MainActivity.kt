@@ -21,8 +21,6 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.asImageBitmap
-import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalView
 import androidx.core.view.WindowCompat
 import androidx.compose.ui.text.font.FontFamily
@@ -32,8 +30,6 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.withContext
 import java.io.File
 
 class MainActivity : ComponentActivity() {
@@ -79,10 +75,21 @@ private fun LibraryScreen(vm: ReaderViewModel) {
     var query by rememberSaveable { mutableStateOf("") }
     var deleting by remember { mutableStateOf<Book?>(null) }
     val importer = rememberLauncherForActivityResult(ActivityResultContracts.OpenMultipleDocuments()) { if (it.isNotEmpty()) vm.import(it) }
+    var libraryMenu by remember { mutableStateOf(false) }
+    var restoring by rememberSaveable { mutableStateOf<android.net.Uri?>(null) }
+    val restorer = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { restoring = it }
+    val exporter = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/zip")) { it?.let(vm::exportLibrary) }
     Scaffold(
         containerColor = MaterialTheme.colorScheme.background,
-        topBar = { TopAppBar(title = { Column { Text("Your library", fontFamily = FontFamily.Serif); Text("OFFLINE READER", style = MaterialTheme.typography.labelSmall, letterSpacing = 2.sp) } }) },
-        floatingActionButton = { ExtendedFloatingActionButton(onClick = { if (!busy) importer.launch(arrayOf("*/*")) }, icon = { Icon(Icons.Default.Add, null) }, text = { Text(if (busy) "Importing…" else "Import books") }) }
+        topBar = { TopAppBar(title = { Column { Text("Your library", fontFamily = FontFamily.Serif); Text("OFFLINE READER", style = MaterialTheme.typography.labelSmall, letterSpacing = 2.sp) } },
+            actions = {
+                IconButton(onClick = { libraryMenu = true }, enabled = !busy) { Icon(Icons.Default.MoreVert, "Library actions") }
+                DropdownMenu(expanded = libraryMenu, onDismissRequest = { libraryMenu = false }) {
+                    DropdownMenuItem(text = { Text("Export library") }, onClick = { libraryMenu = false; exporter.launch("Offline-Reader-library.zip") })
+                    DropdownMenuItem(text = { Text("Import library") }, onClick = { libraryMenu = false; restorer.launch(arrayOf("*/*")) })
+                }
+            }) },
+        floatingActionButton = { ExtendedFloatingActionButton(onClick = { if (!busy) importer.launch(arrayOf("*/*")) }, icon = { Icon(Icons.Default.Add, null) }, text = { Text(if (busy) "Working…" else "Import books") }) }
     ) { padding ->
         Column(Modifier.fillMaxSize().padding(padding)) {
             OutlinedTextField(query, { query = it }, placeholder = { Text("Search title or author") }, leadingIcon = { Icon(Icons.Default.Search, null) }, singleLine = true, modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 8.dp), shape = RoundedCornerShape(20.dp))
@@ -102,7 +109,7 @@ private fun LibraryScreen(vm: ReaderViewModel) {
                 LazyVerticalGrid(columns = GridCells.Adaptive(155.dp), contentPadding = PaddingValues(20.dp, 12.dp, 20.dp, 104.dp), horizontalArrangement = Arrangement.spacedBy(16.dp), verticalArrangement = Arrangement.spacedBy(24.dp)) {
                     items(filtered, key = { it.id }) { book ->
                         Column {
-                            Card(onClick = { vm.open(book) }, shape = RoundedCornerShape(10.dp)) {
+                            Card(onClick = { vm.open(book) }, enabled = !busy, shape = RoundedCornerShape(10.dp)) {
                                 Box(Modifier.fillMaxWidth().aspectRatio(.72f).background(MaterialTheme.colorScheme.surfaceVariant), contentAlignment = Alignment.Center) {
                                     if (book.cover != null) CoverImage(File(book.directory, book.cover), Modifier.fillMaxSize(), book.title)
                                     else Column(Modifier.padding(16.dp), horizontalAlignment = Alignment.CenterHorizontally) {
@@ -126,18 +133,9 @@ private fun LibraryScreen(vm: ReaderViewModel) {
             }
         }
     }
+    restoring?.let { uri -> AlertDialog(onDismissRequest = { restoring = null }, title = { Text("Restore library?") },
+        text = { Text("Add missing books. For matching books, keep the most recently saved reading position and merge bookmarks. Reading preferences are replaced by the backup's. Other books stay. Export your current library first to keep a copy.") },
+        confirmButton = { TextButton(onClick = { restoring = null; vm.importLibrary(uri) }) { Text("Restore") } },
+        dismissButton = { TextButton(onClick = { restoring = null }) { Text("Cancel") } }) }
     deleting?.let { book -> AlertDialog(onDismissRequest = { deleting = null }, title = { Text("Remove book?") }, text = { Text("Remove “${book.title}” and its bookmarks from this library? The original file in Downloads or Files is kept.") }, confirmButton = { TextButton(onClick = { vm.delete(book); deleting = null }) { Text("Remove") } }, dismissButton = { TextButton(onClick = { deleting = null }) { Text("Cancel") } }) }
-}
-
-@Composable
-fun LocalImage(file: File, modifier: Modifier, description: String?, scale: ContentScale = ContentScale.Fit) {
-    val bitmap by produceState<android.graphics.Bitmap?>(null, file.absolutePath) {
-        value = withContext(Dispatchers.IO) {
-            val bounds = android.graphics.BitmapFactory.Options().apply { inJustDecodeBounds = true }
-            android.graphics.BitmapFactory.decodeFile(file.absolutePath, bounds)
-            val options = android.graphics.BitmapFactory.Options().apply { inSampleSize = 1; while (bounds.outWidth / inSampleSize > 1400 || bounds.outHeight / inSampleSize > 1800) inSampleSize *= 2 }
-            android.graphics.BitmapFactory.decodeFile(file.absolutePath, options)
-        }
-    }
-    bitmap?.let { Image(it.asImageBitmap(), description, modifier, contentScale = scale) }
 }

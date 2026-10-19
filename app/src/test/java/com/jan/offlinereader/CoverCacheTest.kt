@@ -61,6 +61,32 @@ class CoverCacheTest {
         assertSame(small, cache.cached(file, 150, 225))
     }
 
+    @Test fun bookIllustrationsAreSampledToReaderBoundsAndReusedOnReturn() = runBlocking {
+        val cache = CoverCache(2_000_000)
+        val file = cover("illustration.png")
+        val bitmap = cache.load(file, 300, 500)!!
+        assertEquals(4, coverSampleSize(1200, 1800, 300, 500))
+        assertEquals(300, bitmap.width)
+        assertEquals(450, bitmap.height)
+        assertSame(bitmap, cache.cached(file, 300, 500))
+        assertSame(bitmap, cache.load(file, 300, 500))
+        // A larger reader window must get a sufficiently detailed decode.
+        val resized = cache.load(file, 600, 1000)!!
+        assertEquals(600, resized.width)
+        assertEquals(900, resized.height)
+        assertNotSame(bitmap, resized)
+    }
+
+    @Test fun separateOpenBookCachesDoNotRetainEachOthersPictures() = runBlocking {
+        val file = cover("book-picture.png")
+        val firstBook = CoverCache(2_000_000)
+        val first = firstBook.load(file, 300, 500)!!
+        val nextBook = CoverCache(2_000_000)
+        assertNull(nextBook.cached(file, 300, 500))
+        assertNotSame(first, nextBook.load(file, 300, 500))
+        assertFalse(first.isRecycled)
+    }
+
     @Test fun evictionUsesBitmapBytesAndKeepsDisplayedImagesValid() = runBlocking {
         val cache = CoverCache(200_000)
         val firstFile = cover("one.png")

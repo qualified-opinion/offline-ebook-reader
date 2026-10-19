@@ -99,4 +99,22 @@ class PositionSaverTest {
         assertTrue(oldErrors.isEmpty())
         assertEquals(1, currentErrors.size)
     }
+    @Test fun exportBarrierWaitsForQueuedAndInFlightSaves() = runTest {
+        val gate = CompletableDeferred<Unit>()
+        val saved = mutableListOf<Int>()
+        val saver = PositionSaver(backgroundScope) {
+            if (it.index == 1) gate.await()
+            saved += it.index
+        }
+        saver.enqueue(position("a", 1)); runCurrent()
+        saver.enqueue(position("a", 2))
+        val flushed = async { saver.awaitPendingSaves() }
+        runCurrent(); assertFalse(flushed.isCompleted)
+        gate.complete(Unit); runCurrent()
+        assertFalse(flushed.isCompleted)
+        advanceTimeBy(151); runCurrent()
+        flushed.await()
+        assertEquals(listOf(1, 2), saved)
+    }
+
 }
