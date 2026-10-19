@@ -173,7 +173,7 @@ fun ReaderScreen(book: Book, vm: ReaderViewModel, preferences: Preferences) {
                         Column(Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 4.dp)) {
                             Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.SpaceEvenly) {
                                 IconButton(onClick = { panel = "Contents" }) { Icon(Icons.AutoMirrored.Filled.List, "Table of contents or go to page") }
-                                IconButton(onClick = { vm.position(list.firstVisibleItemIndex, list.firstVisibleItemScrollOffset, currentProgress); vm.bookmark() }) { Icon(Icons.Default.BookmarkAdd, "Add bookmark") }
+                                IconButton(onClick = { vm.position(list.firstVisibleItemIndex, list.firstVisibleItemScrollOffset, currentProgress); vm.bookmark(document?.contents.orEmpty()) }) { Icon(Icons.Default.BookmarkAdd, "Add bookmark") }
                                 IconButton(onClick = { panel = "Bookmarks" }) { Icon(Icons.Default.Bookmarks, "View bookmarks") }
                                 IconButton(onClick = { panel = "Appearance" }) { Icon(Icons.Default.TextFields, "Reading appearance") }
                                 if (book.format == "PDF") IconButton(onClick = { zoomPage = currentIndex }) { Icon(Icons.Default.ZoomIn, "Zoom current page") }
