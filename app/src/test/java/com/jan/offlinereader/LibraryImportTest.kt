@@ -104,6 +104,30 @@ class LibraryImportTest {
         assertTrue(database.dao().snapshotBooks().isEmpty())
         assertFalse(File(folder.root.parentFile, "escape.txt").exists())
     }
+    @Test fun changedBookLayoutStillRestoresWithApproximateSpots() = runBlocking {
+        val saved = book()
+        assertTrue(saved.units >= 2)
+        database.dao().updateBook(saved.copy(position = 0, offset = 30, progress = .5f, lastRead = 123))
+        val entries = archive()
+        repository.delete(saved)
+        // Simulate a backup from an app version that split this book into twice as many passages.
+        changeMetadata(entries) { json ->
+            val record = json.getJSONArray("books").getJSONObject(0)
+            record.put("units", saved.units * 2).put("position", saved.units).put("offset", 30)
+            record.getJSONArray("bookmarks").put(JSONObject().put("position", 2).put("offset", 9)
+                .put("label", "Older layout").put("created", 1))
+        }
+        assertEquals(1, restore(entries))
+        val restored = database.dao().snapshotBooks().single()
+        assertEquals(saved.units, restored.units)
+        assertEquals(saved.units / 2, restored.position)
+        assertEquals(0, restored.offset)
+        assertEquals(.5f, restored.progress)
+        val mark = database.dao().snapshotBookmarks().single()
+        assertEquals(1, mark.position)
+        assertEquals(0, mark.offset)
+        assertEquals("Older layout", mark.label)
+    }
     @Test fun unsupportedVersionAndUnsafePreferencesAreRejected() = runBlocking {
         val entries = archive()
         changeMetadata(entries) { it.put("version", 2) }; rejected(entries)

@@ -84,12 +84,18 @@ internal class LibraryImport(private val database: ReaderDatabase, private val r
                         repository.import(Uri.fromFile(file), "${record.getString("title")}.${file.extension}").also { if (!it.alreadyPresent) added += it.book }.book
                     }
                     coroutineContext.ensureActive()
-                    require(book.units == record.getInt("units")) { "The saved book layout does not match." }
-                    fun position(value: JSONObject): Int = value.getInt("position").also {
-                        require(it in 0 until book.units) { "A reading position is invalid." }
+                    val savedUnits = record.getInt("units")
+                    require(savedUnits > 0) { "The saved book layout is invalid." }
+                    // A newer app version may split the same book into a different number of passages.
+                    // Keep approximate reading spots rather than refusing the whole backup.
+                    val sameLayout = book.units == savedUnits
+                    fun position(value: JSONObject): Int = value.getInt("position").let {
+                        require(it in 0 until savedUnits) { "A reading position is invalid." }
+                        if (sameLayout) it else (it.toLong() * book.units / savedUnits).toInt()
                     }
-                    fun offset(value: JSONObject): Int = value.getInt("offset").also {
+                    fun offset(value: JSONObject): Int = value.getInt("offset").let {
                         require(it >= 0) { "A reading offset is invalid." }
+                        if (sameLayout) it else 0
                     }
                     val progress = record.getDouble("progress").toFloat()
                     require(progress in 0f..1f) { "Reading progress is invalid." }
