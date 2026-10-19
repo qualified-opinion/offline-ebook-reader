@@ -4,6 +4,21 @@ import org.junit.Assert.*
 import org.junit.Test
 
 class TextIndexTest {
+    @Test fun imageHeightFitsAspectRatioAndCapsTallPictures() {
+        assertEquals(180f, imageDisplayHeight(360f, 800, 400)!!, 0f)
+        assertEquals(360f, imageDisplayHeight(360f, 400, 400)!!, 0f)
+        assertEquals(500f, imageDisplayHeight(360f, 400, 1200)!!, 0f)
+        assertEquals(300f, imageDisplayHeight(600f, 800, 400)!!, 0f)
+        assertEquals(500f, imageDisplayHeight(Float.MAX_VALUE, 1, Int.MAX_VALUE)!!, 0f)
+    }
+
+    @Test fun missingOrInvalidImageDimensionsUseLegacyLayout() {
+        assertNull(imageDisplayHeight(360f, 0, 0))
+        assertNull(imageDisplayHeight(360f, -1, 400))
+        assertNull(imageDisplayHeight(360f, 800, 0))
+        assertNull(imageDisplayHeight(0f, 800, 400))
+        assertNull(imageDisplayHeight(Float.NaN, 800, 400))
+    }
     @Test fun chunksPreserveEveryCharacterOfLongBooks() {
         val text = ("A calm page.  Spaces,\nnew lines and punctuation! " + "x".repeat(1500)).repeat(1000)
         val chunks = TextChunks.split(text)

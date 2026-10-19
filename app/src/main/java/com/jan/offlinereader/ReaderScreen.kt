@@ -155,7 +155,12 @@ fun ReaderScreen(book: Book, vm: ReaderViewModel, preferences: Preferences) {
                 } else {
                     itemsIndexed(document!!.blocks, key = { index, _ -> index }) { index, block ->
                         Box(Modifier.widthIn(max = 800.dp).fillMaxWidth().padding(horizontal = margin)) {
-                            if (block.image != null) LocalImage(File(book.directory, block.image), Modifier.fillMaxWidth().heightIn(min = 120.dp, max = 500.dp), "Book illustration", imageCache)
+                            if (block.image != null) BoxWithConstraints(Modifier.fillMaxWidth()) {
+                                val height = imageDisplayHeight(maxWidth.value, block.imageWidth, block.imageHeight)
+                                val size = if (height == null) Modifier.heightIn(min = 120.dp, max = 500.dp)
+                                    else Modifier.height(height.dp)
+                                LocalImage(File(book.directory, block.image), Modifier.fillMaxWidth().then(size), "Book illustration", imageCache)
+                            }
                             else TextBlock(book, block, index, textCache, vm, preferences)
                         }
                     }
