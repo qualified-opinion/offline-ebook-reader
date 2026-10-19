@@ -7,8 +7,8 @@ With PR #22 (issue #10) applied, the app compiles against and targets Android 16
 Build Tools 35.0.0. Before this change, main targeted API 35. The upgrade stays in
 draft until the Android 16 device checklist below has been run.
 
-**PR #22 head and CI (fill in after push):** commit `<NEW_HEAD_SHA>`,
-[CI run](<CI_RUN_URL>) — `testDebugUnitTest lintDebug assembleDebug` result: `<PENDING>`.
+**PR #22 merged-code head and CI:** commit `bb6c429f535edff41d22e2aa3f2b714e0ade5797`,
+[CI run](https://github.com/qualified-opinion/offline-ebook-reader/actions/runs/39203833980) — `testDebugUnitTest lintDebug assembleDebug` result: passed (pull_request run; the push run failed once on `ReaderResumeTest` line 61, a flaky test from main, and passed on rerun, [run 39203830247](https://github.com/qualified-opinion/offline-ebook-reader/actions/runs/39203830247)).
 The earlier green API 36 build, [run 39118693849](https://github.com/qualified-opinion/offline-ebook-reader/actions/runs/39118693849),
 is for old commit `dcecc2226997d48ec798f654d08c57ce5196adc9`, which predates the merge
 of current main and so does not validate the merged code.
