@@ -21,8 +21,6 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.asImageBitmap
-import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalView
 import androidx.core.view.WindowCompat
 import androidx.compose.ui.text.font.FontFamily
@@ -32,8 +30,6 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.withContext
 import java.io.File
 
 class MainActivity : ComponentActivity() {
@@ -142,17 +138,4 @@ private fun LibraryScreen(vm: ReaderViewModel) {
         confirmButton = { TextButton(onClick = { restoring = null; vm.importLibrary(uri) }) { Text("Restore") } },
         dismissButton = { TextButton(onClick = { restoring = null }) { Text("Cancel") } }) }
     deleting?.let { book -> AlertDialog(onDismissRequest = { deleting = null }, title = { Text("Remove book?") }, text = { Text("Remove “${book.title}” and its bookmarks from this library? The original file in Downloads or Files is kept.") }, confirmButton = { TextButton(onClick = { vm.delete(book); deleting = null }) { Text("Remove") } }, dismissButton = { TextButton(onClick = { deleting = null }) { Text("Cancel") } }) }
-}
-
-@Composable
-fun LocalImage(file: File, modifier: Modifier, description: String?, scale: ContentScale = ContentScale.Fit) {
-    val bitmap by produceState<android.graphics.Bitmap?>(null, file.absolutePath) {
-        value = withContext(Dispatchers.IO) {
-            val bounds = android.graphics.BitmapFactory.Options().apply { inJustDecodeBounds = true }
-            android.graphics.BitmapFactory.decodeFile(file.absolutePath, bounds)
-            val options = android.graphics.BitmapFactory.Options().apply { inSampleSize = 1; while (bounds.outWidth / inSampleSize > 1400 || bounds.outHeight / inSampleSize > 1800) inSampleSize *= 2 }
-            android.graphics.BitmapFactory.decodeFile(file.absolutePath, options)
-        }
-    }
-    bitmap?.let { Image(it.asImageBitmap(), description, modifier, contentScale = scale) }
 }

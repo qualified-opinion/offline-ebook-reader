@@ -51,6 +51,9 @@ fun ReaderScreen(book: Book, vm: ReaderViewModel, preferences: Preferences) {
     var pdf by remember { mutableStateOf<PdfSource?>(null) }
     var ratios by remember { mutableStateOf<List<Float>>(emptyList()) }
     val textCache = remember(book.id) { TextBlockCache() }
+    val imageCache = remember(book.id) {
+        CoverCache(minOf(16L * 1024 * 1024, Runtime.getRuntime().maxMemory() / 16).toInt().coerceAtLeast(1))
+    }
     var failure by remember { mutableStateOf<String?>(null) }
     var ready by remember { mutableStateOf(false) }
     var controls by rememberSaveable { mutableStateOf(true) }
@@ -152,7 +155,7 @@ fun ReaderScreen(book: Book, vm: ReaderViewModel, preferences: Preferences) {
                 } else {
                     itemsIndexed(document!!.blocks, key = { index, _ -> index }) { index, block ->
                         Box(Modifier.widthIn(max = 800.dp).fillMaxWidth().padding(horizontal = margin)) {
-                            if (block.image != null) LocalImage(File(book.directory, block.image), Modifier.fillMaxWidth().heightIn(min = 120.dp, max = 500.dp), "Book illustration")
+                            if (block.image != null) LocalImage(File(book.directory, block.image), Modifier.fillMaxWidth().heightIn(min = 120.dp, max = 500.dp), "Book illustration", imageCache)
                             else TextBlock(book, block, index, textCache, vm, preferences)
                         }
                     }
