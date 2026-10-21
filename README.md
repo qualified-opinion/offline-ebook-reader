@@ -27,7 +27,24 @@ A GitHub Actions workflow is included. Put the contents of this folder at a repo
 root, then push or run **Build Android APK**. Download the `Offline-Reader-debug-apk`
 artifact from the workflow run. It is signed with the debug key for personal testing.
 For long-term updates, generate and preserve your own release signing key in Android
-Studio. A release build does not have a preconfigured signing key.
+Studio.
+
+## Signed release build
+
+Add these repository secrets under **Settings > Secrets and variables > Actions**:
+
+- `RELEASE_KEYSTORE_BASE64`: Base64-encoded contents of your release keystore file.
+- `STORE_PASSWORD`: Password for that keystore.
+- `KEY_ALIAS`: Alias of the release signing key inside the keystore.
+- `KEY_PASSWORD`: Password for that signing key.
+
+In **Actions > Android Release > Run workflow**, select the branch and run it by hand.
+Download the `Offline-Reader-<versionName>` artifact; it contains the signed
+`Offline-Reader-<versionName>.apk`. Release builds without all four signing environment
+variables stay unsigned.
+
+A release-signed APK cannot install over a debug build. Export a library backup first,
+uninstall the debug build, then install the signed APK and restore the backup.
 
 ## Use
 

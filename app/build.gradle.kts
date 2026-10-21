@@ -19,7 +19,23 @@ android {
     testOptions { unitTests.isIncludeAndroidResources = true }
     compileOptions { sourceCompatibility = JavaVersion.VERSION_17; targetCompatibility = JavaVersion.VERSION_17 }
     kotlinOptions { jvmTarget = "17" }
-    buildTypes { release { isMinifyEnabled = false } }
+    val releaseSigning = listOf(
+        "RELEASE_STORE_FILE", "RELEASE_STORE_PASSWORD", "RELEASE_KEY_ALIAS", "RELEASE_KEY_PASSWORD"
+    ).map { System.getenv(it) }
+    val releaseSigningConfig = if (releaseSigning.all { !it.isNullOrBlank() }) {
+        signingConfigs.create("release") {
+            storeFile = file(releaseSigning[0]!!)
+            storePassword = releaseSigning[1]
+            keyAlias = releaseSigning[2]
+            keyPassword = releaseSigning[3]
+        }
+    } else null
+    buildTypes {
+        release {
+            isMinifyEnabled = false
+            if (releaseSigningConfig != null) signingConfig = releaseSigningConfig
+        }
+    }
 }
 ksp { arg("room.schemaLocation", "$projectDir/schemas") }
 dependencies {

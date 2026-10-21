@@ -1,0 +1,66 @@
+name: Android Release
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: android-actions/setup-android@v3
+        with:
+          packages: 'platform-tools platforms;android-36 build-tools;35.0.0'
+      - uses: gradle/actions/setup-gradle@v4
+      - name: Validate secrets and decode keystore
+        env:
+          RELEASE_KEYSTORE_BASE64: ${{ secrets.RELEASE_KEYSTORE_BASE64 }}
+          STORE_PASSWORD: ${{ secrets.STORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
+        run: |
+          for secret in RELEASE_KEYSTORE_BASE64 STORE_PASSWORD KEY_ALIAS KEY_PASSWORD; do
+            if [ -z "${!secret}" ]; then
+              echo "::error::Missing repository secret: $secret"
+              exit 1
+            fi
+          done
+          umask 077
+          printf '%s' "$RELEASE_KEYSTORE_BASE64" | base64 --decode > "$RUNNER_TEMP/release.jks"
+      - name: Test and build signed release
+        env:
+          RELEASE_STORE_FILE: ${{ runner.temp }}/release.jks
+          RELEASE_STORE_PASSWORD: ${{ secrets.STORE_PASSWORD }}
+          RELEASE_KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
+          RELEASE_KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
+        run: ./gradlew testDebugUnitTest assembleRelease
+      - name: Verify and name signed APK
+        id: apk
+        run: |
+          apk=app/build/outputs/apk/release/app-release.apk
+          if [ ! -f "$apk" ]; then
+            echo "::error::Signed app-release.apk missing; an unsigned APK is not accepted"
+            exit 1
+          fi
+          verification=$("$ANDROID_HOME/build-tools/35.0.0/apksigner" verify --verbose --print-certs "$apk")
+          printf '%s\n' "$verification"
+          if grep -Eq '^Signer #[0-9]+ certificate DN: (.*, )?CN=Android Debug(,|$)' <<< "$verification"; then
+            echo "::error::APK is signed with the Android Debug certificate"
+            exit 1
+          fi
+          version=$(sed -nE 's/^[[:space:]]*versionName[[:space:]]*=[[:space:]]*"([^"]+)".*/\1/p' app/build.gradle.kts)
+          test -n "$version"
+          cp "$apk" "$RUNNER_TEMP/Offline-Reader-$version.apk"
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Offline-Reader-${{ steps.apk.outputs.version }}
+          path: ${{ runner.temp }}/Offline-Reader-${{ steps.apk.outputs.version }}.apk
+          if-no-files-found: error
+      - name: Delete release keystore
+        if: always()
+        run: rm -f "$RUNNER_TEMP/release.jks"
