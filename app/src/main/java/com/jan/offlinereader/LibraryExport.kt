@@ -69,3 +69,6 @@ internal class LibraryExport(private val database: ReaderDatabase) {
         }
     }
 }
+
+/** Suggested export name, dated so several backups in Downloads can be told apart. */
+internal fun backupFileName(date: java.time.LocalDate): String = "Offline-Reader-library-$date.zip"
