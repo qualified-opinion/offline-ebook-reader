@@ -32,6 +32,7 @@ import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -63,6 +64,8 @@ fun ReaderScreen(book: Book, vm: ReaderViewModel, preferences: Preferences) {
     var controls by rememberSaveable { mutableStateOf(true) }
     var panel by rememberSaveable { mutableStateOf<String?>(null) }
     var zoomPage by remember { mutableStateOf<Int?>(null) }
+    // The slider follows the finger; the page moves once, when the finger lifts.
+    var dragging by remember { mutableStateOf<Float?>(null) }
     val list = rememberLazyListState(book.position, book.offset)
     val scope = rememberCoroutineScope()
     var jumpJob by remember { mutableStateOf<Job?>(null) }
@@ -127,8 +130,8 @@ fun ReaderScreen(book: Book, vm: ReaderViewModel, preferences: Preferences) {
             }
         }
     }
-    LaunchedEffect(controls, panel, list.isScrollInProgress) {
-        if (controls && panel == null) { delay(7000); controls = false }
+    LaunchedEffect(controls, panel, list.isScrollInProgress, dragging) {
+        if (controls && panel == null && dragging == null) { delay(7000); controls = false }
     }
     fun jump(index: Int, offset: Int = 0) {
         jumpJob?.cancel()
@@ -138,6 +141,7 @@ fun ReaderScreen(book: Book, vm: ReaderViewModel, preferences: Preferences) {
             document?.let { loaded -> textCache.preload(target, loaded.blocks) { vm.repository.text(book, it) } }
             list.scrollToItem(target, offset)
             panel = null
+            dragging = null
         }
     }
 
@@ -196,7 +200,15 @@ fun ReaderScreen(book: Book, vm: ReaderViewModel, preferences: Preferences) {
                                 IconButton(onClick = { panel = "Appearance" }) { Icon(Icons.Default.TextFields, "Reading appearance") }
                                 if (book.format == "PDF") IconButton(onClick = { zoomPage = currentIndex }) { Icon(Icons.Default.ZoomIn, "Zoom current page") }
                             }
-                            Slider(value = currentProgress, onValueChange = { jump((it * (book.units - 1)).toInt()) }, modifier = Modifier.fillMaxWidth().height(28.dp))
+                            dragging?.let { value ->
+                                Text(sliderPreview(book.format, value, book.units, document?.contents.orEmpty()),
+                                    Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp), maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis, textAlign = TextAlign.Center,
+                                    style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.primary)
+                            }
+                            Slider(value = dragging ?: currentProgress, onValueChange = { jumpJob?.cancel(); dragging = it },
+                                onValueChangeFinished = { dragging?.let { jump(sliderTarget(it, book.units)) } },
+                                modifier = Modifier.fillMaxWidth().height(28.dp))
                         }
                     }
                 }
