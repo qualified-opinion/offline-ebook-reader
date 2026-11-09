@@ -67,6 +67,12 @@ fun ReaderApp(vm: ReaderViewModel = viewModel()) {
         }
     }
 }
+/** The short status under a library card. */
+internal fun readingStatus(book: Book): String = when {
+    book.lastRead == 0L -> "Not started"
+    book.progress >= .995f -> "Finished"
+    else -> "${(book.progress * 100).toInt()}% read"
+}
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun LibraryScreen(vm: ReaderViewModel) {
@@ -121,12 +127,19 @@ private fun LibraryScreen(vm: ReaderViewModel) {
                             }
                             Row(verticalAlignment = Alignment.CenterVertically) {
                                 Text(book.title, Modifier.weight(1f).padding(top = 10.dp), maxLines = 2, overflow = TextOverflow.Ellipsis, style = MaterialTheme.typography.titleSmall)
-                                IconButton(onClick = { deleting = book }, modifier = Modifier.size(36.dp)) { Icon(Icons.Default.MoreVert, "Remove ${book.title}") }
+                                Box {
+                                    var bookMenu by remember { mutableStateOf(false) }
+                                    IconButton(onClick = { bookMenu = true }, modifier = Modifier.size(36.dp)) { Icon(Icons.Default.MoreVert, "More options for ${book.title}") }
+                                    DropdownMenu(expanded = bookMenu, onDismissRequest = { bookMenu = false }) {
+                                        DropdownMenuItem(text = { Text("Remove from library") }, leadingIcon = { Icon(Icons.Default.DeleteOutline, null) },
+                                            onClick = { bookMenu = false; deleting = book })
+                                    }
+                                }
                             }
                             if (book.author.isNotBlank()) Text(book.author, maxLines = 1, overflow = TextOverflow.Ellipsis, style = MaterialTheme.typography.bodySmall)
                             Spacer(Modifier.height(8.dp))
                             LinearProgressIndicator(progress = { book.progress }, modifier = Modifier.fillMaxWidth().height(3.dp))
-                            Text(if (book.lastRead == 0L) "Not started" else "${(book.progress * 100).toInt()}% read", Modifier.padding(top = 5.dp), style = MaterialTheme.typography.labelSmall)
+                            Text(readingStatus(book), Modifier.padding(top = 5.dp), style = MaterialTheme.typography.labelSmall)
                         }
                     }
                 }
