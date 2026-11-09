@@ -39,6 +39,13 @@ class MainActivity : ComponentActivity() {
         setContent { ReaderApp() }
     }
 }
+/** Stored paper names. "System" (shown as "Match phone") follows the phone's dark mode. */
+internal val paperThemes = listOf("Light", "Sepia", "Dark", "System")
+internal fun paperLabel(theme: String) = if (theme == "System") "Match phone" else theme
+/** The paper actually shown: "System" becomes Dark or Light; other names are kept. */
+internal fun resolvePaper(theme: String, phoneIsDark: Boolean) =
+    if (theme == "System") (if (phoneIsDark) "Dark" else "Light") else theme
+
 fun readerColors(theme: String) = when (theme) {
     "Dark" -> darkColorScheme(primary = Color(0xFFBBCBB1), background = Color(0xFF181B18), surface = Color(0xFF20241F), onBackground = Color(0xFFD9DED5), onSurface = Color(0xFFD9DED5))
     "Light" -> lightColorScheme(primary = Color(0xFF526747), background = Color(0xFFFCFCF8), surface = Color(0xFFF5F5EE), onBackground = Color(0xFF292E26), onSurface = Color(0xFF292E26))
@@ -56,10 +63,11 @@ fun ReaderApp(vm: ReaderViewModel = viewModel()) {
     val message by vm.message.collectAsStateWithLifecycle()
     val snackbar = remember { SnackbarHostState() }
     val view = LocalView.current
+    val paper = resolvePaper(preferences.theme, isSystemInDarkTheme())
     SideEffect {
-        (view.context as? Activity)?.window?.let { applyReaderStatusBar(it, preferences.theme) }
+        (view.context as? Activity)?.window?.let { applyReaderStatusBar(it, paper) }
     }
-    MaterialTheme(colorScheme = readerColors(preferences.theme)) {
+    MaterialTheme(colorScheme = readerColors(paper)) {
         LaunchedEffect(message) { message?.let { snackbar.showSnackbar(it); vm.clearMessage() } }
         Box(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background).safeDrawingPadding()) {
             if (active == null) LibraryScreen(vm) else key(active!!.id) { ReaderScreen(active!!, vm, preferences) }

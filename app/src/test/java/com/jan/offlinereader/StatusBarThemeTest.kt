@@ -47,6 +47,17 @@ class StatusBarThemeTest {
         }
     }
 
+    @Test fun matchPhonePaperFollowsDarkModeAndOtherPapersStayFixed() {
+        assertEquals("Dark", resolvePaper("System", phoneIsDark = true))
+        assertEquals("Light", resolvePaper("System", phoneIsDark = false))
+        listOf("Light", "Sepia", "Dark").forEach { theme ->
+            assertEquals(theme, resolvePaper(theme, phoneIsDark = true))
+            assertEquals(theme, resolvePaper(theme, phoneIsDark = false))
+        }
+        assertEquals("Match phone", paperLabel("System"))
+        assertEquals("Sepia", paperLabel("Sepia"))
+    }
+
     @Test fun changingPaperThemeUpdatesTheExistingWindow() {
         inSystemMode("notnight") { activity ->
             val icons = WindowCompat.getInsetsController(activity.window, activity.window.decorView)

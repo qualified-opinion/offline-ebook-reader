@@ -43,7 +43,7 @@ internal class LibraryImport(private val database: ReaderDatabase, private val r
                 preferences = Preferences(fontSize = settings.getDouble("fontSize").toFloat(),
                     lineSpacing = settings.getDouble("lineSpacing").toFloat(), theme = settings.getString("theme"))
                 require(preferences.fontSize in 14f..34f && preferences.lineSpacing in 1.2f..2.2f &&
-                    preferences.theme in setOf("Light", "Sepia", "Dark")) { "Reading preferences are invalid." }
+                    preferences.theme in paperThemes) { "Reading preferences are invalid." }
                 val records = manifest.getJSONArray("books")
                 require(records.length() <= 10_000) { "Too many books in this library." }
                 val expected = linkedMapOf<String, JSONObject>()
