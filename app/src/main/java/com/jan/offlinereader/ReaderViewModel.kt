@@ -36,8 +36,10 @@ class ReaderViewModel internal constructor(application: Application, private val
         savedState.get<String>("activeBook")?.let { id -> viewModelScope.launch { dao.book(id)?.let { activate(it) } } }
     }
     private fun activate(book: Book) {
-        _active.value = book
+        // Set the in-memory spot before publishing the book, so anything that reacts to the
+        // book becoming active (and then saves a new spot) can't be overwritten by this line.
         latest = ReadingPosition(book.id, book.position, book.offset, book.progress)
+        _active.value = book
         savedState["activeBook"] = book.id
         bookmarkJob?.cancel()
         bookmarkJob = viewModelScope.launch { dao.bookmarks(book.id).collect { _bookmarks.value = it } }

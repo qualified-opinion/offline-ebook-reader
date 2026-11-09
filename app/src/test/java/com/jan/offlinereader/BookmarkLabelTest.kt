@@ -51,4 +51,18 @@ class BookmarkLabelTest {
         assertEquals("0%", sliderPreview("EPUB", 0f, 31, chapters))
         assertEquals("42%", sliderPreview("TXT", .42f, 10, emptyList()))
     }
+
+    @Test fun currentChapterIndexFindsTheChapterYouAreIn() {
+        assertEquals(-1, currentChapterIndex(chapters, 0))
+        assertEquals(-1, currentChapterIndex(emptyList(), 5))
+        assertEquals(0, currentChapterIndex(chapters, chapters[0].position))
+        assertEquals(chapters.lastIndex, currentChapterIndex(chapters, 10_000))
+    }
+
+    @Test fun readingLineShowsChapterAndPercentOrPdfPage() {
+        assertEquals("Page 12 of 300", readingLine("PDF", 11, 300, .04f, chapters))
+        assertEquals("42% read", readingLine("TXT", 4, 10, .42f, emptyList()))
+        assertEquals("Chapter 2 · 50% read", readingLine("EPUB", 15, 31, .5f, chapters))
+        assertEquals("0% read", readingLine("EPUB", 0, 31, 0f, chapters))
+    }
 }
