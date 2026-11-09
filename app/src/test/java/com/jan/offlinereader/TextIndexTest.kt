@@ -31,6 +31,28 @@ class TextIndexTest {
         assertEquals(text, chunks.joinToString(""))
         assertTrue(chunks.none { Character.isHighSurrogate(it.last()) || Character.isLowSurrogate(it.first()) })
     }
+    @Test fun longParagraphsBreakAtSentenceEndsWithoutLeadingSpaces() {
+        val text = "This is a calm sentence about reading, with a few more words. ".repeat(40) + "Last words here"
+        val chunks = TextChunks.split(text)
+        assertEquals(text, chunks.joinToString(""))
+        assertTrue(chunks.size > 1)
+        assertTrue(chunks.all { it.length <= 700 && it.isNotEmpty() })
+        assertTrue(chunks.drop(1).none { it.first().isWhitespace() })
+        assertTrue(chunks.dropLast(1).all { it.trimEnd().endsWith(".") })
+    }
+    @Test fun sentenceEndsInsideQuotesArePreferredOverLaterSpaces() {
+        val text = "a".repeat(400) + " “Is it far?” " + "word ".repeat(100)
+        val chunks = TextChunks.split(text)
+        assertEquals(text, chunks.joinToString(""))
+        assertTrue(chunks.first().endsWith("far?” "))
+    }
+    @Test fun withoutSentenceEndsPiecesStillStartAfterTheSpace() {
+        val text = "word  ".repeat(300)
+        val chunks = TextChunks.split(text)
+        assertEquals(text, chunks.joinToString(""))
+        assertTrue(chunks.all { it.length <= 700 })
+        assertTrue(chunks.drop(1).none { it.first().isWhitespace() })
+    }
     @Test fun emptyTextHasNoChunks() { assertTrue(TextChunks.split("").isEmpty()) }
     @Test fun resolvesNestedEpubPathsAndEscapedNames() {
         assertEquals("OPS/images/cover one.jpg", resolve("OPS/text/chapter.xhtml", "../images/cover%20one.jpg"))

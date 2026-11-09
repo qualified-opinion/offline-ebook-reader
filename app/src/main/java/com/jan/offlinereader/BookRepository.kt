@@ -275,7 +275,7 @@ class BookRepository(private val context: Context, private val dao: ReaderDao) {
         val toc = json.getJSONArray("contents")
         TextDocument((0 until blocks.length()).map { i -> blocks.getJSONObject(i).let {
             Block(it.getLong("start"), it.getInt("length"), it.optBoolean("heading"), it.optString("image").ifBlank { null },
-                it.optInt("imageWidth"), it.optInt("imageHeight"))
+                it.optInt("imageWidth"), it.optInt("imageHeight"), joined = it.optBoolean("joined"))
         } }, (0 until toc.length()).map { i -> toc.getJSONObject(i).let { ContentsEntry(it.getString("title"), it.getInt("position")) } })
     }
     suspend fun text(book: Book, block: Block): String = withContext(Dispatchers.IO) {
@@ -315,10 +315,10 @@ private class IndexWriter(dir: File) : Closeable {
     fun mark(title: String) { contents += ContentsEntry(title, blocks.size) }
     fun text(value: String, heading: Boolean = false) {
         if (value.isBlank()) return
-        TextChunks.split(value).forEach { chunk ->
+        TextChunks.split(value).forEachIndexed { piece, chunk ->
             val bytes = chunk.toByteArray(Charsets.UTF_8)
             require(offset + bytes.size <= 100L * 1024 * 1024 && blocks.size < 150_000) { "This book exceeds the 100 MB readable-text limit." }
-            output.write(bytes); blocks += Block(offset, bytes.size, heading); offset += bytes.size
+            output.write(bytes); blocks += Block(offset, bytes.size, heading, joined = piece > 0); offset += bytes.size
         }
     }
     fun html(root: Element, path: String, image: (String) -> Block? = { null }) {
@@ -359,6 +359,7 @@ private class IndexWriter(dir: File) : Closeable {
             put(JSONObject().put("start", b.start).put("length", b.length).put("heading", b.heading)
                 .put("image", b.image ?: "").apply {
                     if (b.image != null) { put("imageWidth", b.imageWidth); put("imageHeight", b.imageHeight) }
+                    if (b.joined) put("joined", true)
                 })
         } })
         json.put("contents", JSONArray().apply { contents.forEach { c -> put(JSONObject().put("title", c.title).put("position", c.position)) } })

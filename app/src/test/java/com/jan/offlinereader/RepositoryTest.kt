@@ -69,6 +69,20 @@ class RepositoryTest {
         val reconstructed = document.blocks.map { repository.text(book, it) }.joinToString("")
         assertEquals(("x".repeat(8191) + "😀\n" + "Hello, offline world!\n".repeat(2000)), reconstructed)
     }
+    @Test fun longParagraphPiecesAreJoinedButNewParagraphsAreNot() = runBlocking {
+        val long = "A quiet sentence about a long walk home. ".repeat(60).trim()
+        File(sourceDir, "walk.html").writeText("<html><body><p>$long</p><p>Short paragraph.</p></body></html>")
+        val book = repository.import(uri("walk.html")).book
+        val blocks = repository.document(book).blocks
+        val texts = blocks.map { repository.text(book, it) }
+        val paragraph = blocks.dropLast(1)
+        assertTrue(paragraph.size > 1)
+        assertFalse(paragraph.first().joined)
+        assertTrue(paragraph.drop(1).all { it.joined })
+        assertEquals(long, texts.dropLast(1).joinToString(""))
+        assertEquals("Short paragraph.", texts.last())
+        assertFalse(blocks.last().joined)
+    }
     @Test fun duplicateResultIsFlaggedAndStagingCopyIsRemoved() = runBlocking {
         File(sourceDir, "first.txt").writeText("The same book.")
         File(sourceDir, "renamed.txt").writeText("The same book.")

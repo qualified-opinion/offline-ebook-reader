@@ -151,14 +151,18 @@ fun ReaderScreen(book: Book, vm: ReaderViewModel, preferences: Preferences) {
         else {
             LazyColumn(state = list, modifier = Modifier.fillMaxSize().pointerInput(Unit) { detectTapGestures(onTap = { controls = !controls }) },
                 contentPadding = PaddingValues(top = 76.dp, bottom = 132.dp), horizontalAlignment = Alignment.CenterHorizontally,
-                verticalArrangement = Arrangement.spacedBy(if (book.format == "PDF") 12.dp else 12.dp)) {
+                // Text books add their paragraph gap per item, so pieces of one paragraph stay together.
+                verticalArrangement = if (book.format == "PDF") Arrangement.spacedBy(12.dp) else Arrangement.Top) {
                 if (book.format == "PDF") {
                     items(book.units, key = { it }) { index ->
                         PdfPage(pdf!!, index, ratios[index], preferences.theme, Modifier.widthIn(max = 1000.dp).fillMaxWidth().padding(horizontal = if (maxWidth > 700.dp) 36.dp else 8.dp))
                     }
                 } else {
-                    itemsIndexed(document!!.blocks, key = { index, _ -> index }) { index, block ->
-                        Box(Modifier.widthIn(max = 800.dp).fillMaxWidth().padding(horizontal = margin)) {
+                    val blocks = document!!.blocks
+                    itemsIndexed(blocks, key = { index, _ -> index }) { index, block ->
+                        // The gap sits below an item, so saved scroll offsets within an item are unchanged.
+                        val gap = if (index == blocks.lastIndex || blocks[index + 1].joined) 0.dp else 12.dp
+                        Box(Modifier.widthIn(max = 800.dp).fillMaxWidth().padding(bottom = gap).padding(horizontal = margin)) {
                             if (block.image != null) BoxWithConstraints(Modifier.fillMaxWidth()) {
                                 val height = imageDisplayHeight(maxWidth.value, block.imageWidth, block.imageHeight)
                                 val size = if (height == null) Modifier.heightIn(min = 120.dp, max = 500.dp)
