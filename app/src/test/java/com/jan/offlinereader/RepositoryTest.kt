@@ -67,7 +67,25 @@ class RepositoryTest {
         source.delete()
         val document = repository.document(book)
         val reconstructed = document.blocks.map { repository.text(book, it) }.joinToString("")
-        assertEquals(("x".repeat(8191) + "😀\n" + "Hello, offline world!\n".repeat(2000)), reconstructed)
+        // One paragraph of short lines: line breaks are kept, the final newline ends the paragraph.
+        assertEquals(("x".repeat(8191) + "😀\n" + "Hello, offline world!\n".repeat(2000)).removeSuffix("\n"), reconstructed)
+    }
+    @Test fun plainTextKeepsBlankLineParagraphsAndWholeWordsAcrossReads() = runBlocking {
+        val wrapped = "It was a quiet evening, and the lamps along the river were lit one\n" +
+            "by one while the boats came slowly home through the falling mist.\n"
+        // The first paragraph is long enough that a word crosses the 8,192-character read boundary.
+        val text = "Opening words ".repeat(585) + "boundaryword end.\n\n" + wrapped + "\n\nShort line\nAnother short line\n"
+        File(sourceDir, "river.txt").writeText(text)
+        val book = repository.import(uri("river.txt")).book
+        val blocks = repository.document(book).blocks
+        val texts = blocks.map { repository.text(book, it) }
+        val paragraphs = mutableListOf<String>()
+        blocks.forEachIndexed { index, block -> if (block.joined) paragraphs[paragraphs.lastIndex] += texts[index] else paragraphs += texts[index] }
+        assertEquals(3, paragraphs.size)
+        assertTrue(paragraphs[0].endsWith("Opening words boundaryword end."))
+        assertTrue(texts.none { it.startsWith("ndaryword") || it.endsWith("bou") })
+        assertEquals("It was a quiet evening, and the lamps along the river were lit one by one while the boats came slowly home through the falling mist.", paragraphs[1])
+        assertEquals("Short line\nAnother short line", paragraphs[2])
     }
     @Test fun longParagraphPiecesAreJoinedButNewParagraphsAreNot() = runBlocking {
         val long = "A quiet sentence about a long walk home. ".repeat(60).trim()

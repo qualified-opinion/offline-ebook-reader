@@ -53,6 +53,36 @@ class TextIndexTest {
         assertTrue(chunks.all { it.length <= 700 })
         assertTrue(chunks.drop(1).none { it.first().isWhitespace() })
     }
+    private fun paragraphs(vararg reads: String, max: Int = 64 * 1024): List<String> {
+        val out = mutableListOf<String>()
+        PlainTextParagraphs(max) { out += it }.apply { reads.forEach { add(it) }; finish() }
+        return out
+    }
+    @Test fun blankLinesSeparateParagraphsAndWindowsLineEndsAreHandled() {
+        assertEquals(listOf("One.", "Two.", "Three."), paragraphs("One.\r\n\r\nTwo.\n \n\n\nThree.\n"))
+    }
+    @Test fun wordsAndLinesSplitAcrossReadsStayWhole() {
+        assertEquals(listOf("Hello world", "Next"), paragraphs("Hel", "lo wo", "rld\n", "\nNe", "xt"))
+        assertEquals(listOf("abc😀def"), paragraphs("abc\uD83D", "\uDE00def"))
+    }
+    @Test fun wrappedProseIsJoinedButPoetryKeepsItsLines() {
+        val prose = listOf("It was a quiet evening, and the lamps along the river were lit one",
+            "by one while the boats came slowly home through the falling mist, and",
+            "the town went still.")
+        assertEquals(prose.joinToString(" "), joinParagraphLines(prose))
+        val poem = listOf("The river moves", "  and the lamps go out,", "one by one.")
+        assertEquals(poem.joinToString("\n"), joinParagraphLines(poem))
+        assertEquals("Single line", joinParagraphLines(listOf("Single line  ")))
+    }
+    @Test fun hugeParagraphsAndLinesStayWithinTheMemoryLimit() {
+        val longLine = "word ".repeat(1000)
+        val out = paragraphs(longLine, max = 1000)
+        assertTrue(out.size > 1)
+        assertTrue(out.all { it.length <= 1001 })
+        assertEquals(longLine.trimEnd(), out.joinToString(" ") { it.trim() })
+        val manyLines = paragraphs("short line\n".repeat(500), max = 1000)
+        assertTrue(manyLines.size > 1)
+    }
     @Test fun emptyTextHasNoChunks() { assertTrue(TextChunks.split("").isEmpty()) }
     @Test fun resolvesNestedEpubPathsAndEscapedNames() {
         assertEquals("OPS/images/cover one.jpg", resolve("OPS/text/chapter.xhtml", "../images/cover%20one.jpg"))
