@@ -69,6 +69,8 @@ fun ReaderScreen(book: Book, vm: ReaderViewModel, preferences: Preferences) {
     val lifecycleOwner = LocalLifecycleOwner.current
     val context = LocalContext.current
     val bookmarks by vm.bookmarks.collectAsStateWithLifecycle()
+    // Preferences keep the stored choice (for example "System"); pages use the resolved paper.
+    val paper = resolvePaper(preferences.theme, isSystemInDarkTheme())
     val currentIndex by remember { derivedStateOf { list.firstVisibleItemIndex } }
     val currentProgress by remember { derivedStateOf { readingProgress(list, book.units) } }
     BackHandler { vm.close() }
@@ -155,7 +157,7 @@ fun ReaderScreen(book: Book, vm: ReaderViewModel, preferences: Preferences) {
                 verticalArrangement = if (book.format == "PDF") Arrangement.spacedBy(12.dp) else Arrangement.Top) {
                 if (book.format == "PDF") {
                     items(book.units, key = { it }) { index ->
-                        PdfPage(pdf!!, index, ratios[index], preferences.theme, Modifier.widthIn(max = 1000.dp).fillMaxWidth().padding(horizontal = if (maxWidth > 700.dp) 36.dp else 8.dp))
+                        PdfPage(pdf!!, index, ratios[index], paper, Modifier.widthIn(max = 1000.dp).fillMaxWidth().padding(horizontal = if (maxWidth > 700.dp) 36.dp else 8.dp))
                     }
                 } else {
                     val blocks = document!!.blocks
@@ -236,7 +238,7 @@ fun ReaderScreen(book: Book, vm: ReaderViewModel, preferences: Preferences) {
     }
     zoomPage?.let { index ->
         Dialog(onDismissRequest = { zoomPage = null }, properties = DialogProperties(usePlatformDefaultWidth = false)) {
-            PdfZoom(pdf!!, index, ratios[index], preferences.theme, onDone = { zoomPage = null })
+            PdfZoom(pdf!!, index, ratios[index], paper, onDone = { zoomPage = null })
         }
     }
 }
@@ -299,8 +301,8 @@ private fun AppearancePanel(value: Preferences, isPdf: Boolean, save: (Preferenc
         Text("Reading appearance", style = MaterialTheme.typography.headlineSmall)
         Spacer(Modifier.height(24.dp))
         Text("Paper")
-        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-            listOf("Light", "Sepia", "Dark").forEach { theme -> FilterChip(selected = value.theme == theme, onClick = { save(value.copy(theme = theme)) }, label = { Text(theme) }) }
+        Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            paperThemes.forEach { theme -> FilterChip(selected = value.theme == theme, onClick = { save(value.copy(theme = theme)) }, label = { Text(paperLabel(theme)) }) }
         }
         Spacer(Modifier.height(20.dp))
         if (isPdf) Text("PDF pages keep their original layout. Use Zoom to enlarge a page.")

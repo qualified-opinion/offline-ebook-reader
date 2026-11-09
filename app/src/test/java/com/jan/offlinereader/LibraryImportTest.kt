@@ -193,4 +193,13 @@ class LibraryImportTest {
         changeMetadata(entries) { it.put("version", 2) }; rejected(entries)
         changeMetadata(entries) { it.put("version", 1).getJSONObject("preferences").put("fontSize", 10000) }; rejected(entries)
     }
+    @Test fun matchPhonePaperRestoresAndUnknownPaperIsRejected() = runBlocking {
+        book()
+        val preferences = Preferences(fontSize = 22f, lineSpacing = 1.6f, theme = "System")
+        database.dao().preferences(preferences)
+        val entries = archive()
+        assertEquals(1, restore(entries))
+        assertEquals(preferences, database.dao().snapshotPreferences())
+        changeMetadata(entries) { it.getJSONObject("preferences").put("theme", "Neon") }; rejected(entries)
+    }
 }
