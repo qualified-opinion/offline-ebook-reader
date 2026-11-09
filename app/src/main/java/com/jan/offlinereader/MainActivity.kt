@@ -85,7 +85,7 @@ private fun LibraryScreen(vm: ReaderViewModel) {
             actions = {
                 IconButton(onClick = { libraryMenu = true }, enabled = !busy) { Icon(Icons.Default.MoreVert, "Library actions") }
                 DropdownMenu(expanded = libraryMenu, onDismissRequest = { libraryMenu = false }) {
-                    DropdownMenuItem(text = { Text("Export library") }, onClick = { libraryMenu = false; exporter.launch("Offline-Reader-library.zip") })
+                    DropdownMenuItem(text = { Text("Export library") }, onClick = { libraryMenu = false; exporter.launch(backupFileName(java.time.LocalDate.now())) })
                     DropdownMenuItem(text = { Text("Import library") }, onClick = { libraryMenu = false; restorer.launch(arrayOf("*/*")) })
                 }
             }) },

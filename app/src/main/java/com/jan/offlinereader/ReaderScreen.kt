@@ -26,6 +26,10 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.foundation.text.KeyboardActions
+import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -214,8 +218,11 @@ fun ReaderScreen(book: Book, vm: ReaderViewModel, preferences: Preferences) {
                 Text(if (book.format == "PDF") "Go to page" else "Contents", Modifier.padding(24.dp), style = MaterialTheme.typography.headlineSmall)
                 if (book.format == "PDF") {
                     var page by remember { mutableStateOf((currentIndex + 1).toString()) }
-                    OutlinedTextField(page, { page = it.filter(Char::isDigit) }, label = { Text("Page (1–${book.units})") }, singleLine = true, modifier = Modifier.padding(horizontal = 24.dp))
-                    Button(onClick = { page.toIntOrNull()?.let { jump(it - 1) } }, enabled = page.toIntOrNull() in 1..book.units, modifier = Modifier.padding(24.dp)) { Text("Go") }
+                    fun go() { page.toIntOrNull()?.takeIf { it in 1..book.units }?.let { jump(it - 1) } }
+                    OutlinedTextField(page, { page = it.filter(Char::isDigit) }, label = { Text("Page (1–${book.units})") }, singleLine = true,
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number, imeAction = ImeAction.Go),
+                        keyboardActions = KeyboardActions(onGo = { go() }), modifier = Modifier.padding(horizontal = 24.dp))
+                    Button(onClick = { go() }, enabled = page.toIntOrNull() in 1..book.units, modifier = Modifier.padding(24.dp)) { Text("Go") }
                 } else LazyColumn(Modifier.fillMaxWidth().heightIn(max = 480.dp)) {
                     items(document!!.contents) { entry -> ListItem(headlineContent = { Text(entry.title.ifBlank { "Section" }) }, modifier = Modifier.clickable { jump(entry.position) }) }
                 }
