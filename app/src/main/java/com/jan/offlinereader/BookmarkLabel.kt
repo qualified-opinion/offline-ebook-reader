@@ -6,6 +6,18 @@ import kotlin.math.roundToInt
 internal fun chapterAt(contents: List<ContentsEntry>, position: Int): String? =
     contents.lastOrNull { it.position <= position }?.title?.takeIf { it.isNotBlank() }
 
+/** Index in [contents] of the chapter that contains [position], or -1 before the first chapter. */
+internal fun currentChapterIndex(contents: List<ContentsEntry>, position: Int): Int =
+    contents.indexOfLast { it.position <= position }
+
+/** The line under the page: "Chapter 3 · 42% read", "42% read" or, for PDFs, "Page 12 of 300". */
+internal fun readingLine(format: String, position: Int, units: Int, progress: Float,
+    contents: List<ContentsEntry>): String {
+    if (format == "PDF") return "Page ${position + 1} of $units"
+    val percent = "${(progress.coerceIn(0f, 1f) * 100).toInt()}% read"
+    return chapterAt(contents, position)?.let { "$it · $percent" } ?: percent
+}
+
 internal fun bookmarkLabel(format: String?, position: Int, progress: Float,
     contents: List<ContentsEntry>): String {
     if (format == "PDF") return "Page ${position + 1}"

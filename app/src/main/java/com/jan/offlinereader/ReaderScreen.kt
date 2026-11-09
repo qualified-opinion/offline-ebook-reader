@@ -32,6 +32,8 @@ import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.semantics.selected
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -213,7 +215,8 @@ fun ReaderScreen(book: Book, vm: ReaderViewModel, preferences: Preferences) {
                     }
                 }
                 Row(Modifier.fillMaxWidth().background(MaterialTheme.colorScheme.background).padding(start = 20.dp, end = 4.dp), verticalAlignment = Alignment.CenterVertically) {
-                    Text(if (book.format == "PDF") "Page ${currentIndex + 1} of ${book.units}" else "${(currentProgress * 100).toInt()}% read", Modifier.weight(1f), style = MaterialTheme.typography.labelSmall)
+                    Text(readingLine(book.format, currentIndex, book.units, currentProgress, document?.contents.orEmpty()), Modifier.weight(1f),
+                        style = MaterialTheme.typography.labelSmall, maxLines = 1, overflow = TextOverflow.Ellipsis)
                     IconButton(onClick = { controls = !controls }, modifier = Modifier.size(48.dp)) { Icon(if (controls) Icons.Default.ExpandMore else Icons.Default.ExpandLess, if (controls) "Hide reading controls" else "Show reading controls") }
                 }
             }
@@ -241,8 +244,20 @@ fun ReaderScreen(book: Book, vm: ReaderViewModel, preferences: Preferences) {
                         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number, imeAction = ImeAction.Go),
                         keyboardActions = KeyboardActions(onGo = { go() }), modifier = Modifier.padding(horizontal = 24.dp))
                     Button(onClick = { go() }, enabled = page.toIntOrNull() in 1..book.units, modifier = Modifier.padding(24.dp)) { Text("Go") }
-                } else LazyColumn(Modifier.fillMaxWidth().heightIn(max = 480.dp)) {
-                    items(document!!.contents) { entry -> ListItem(headlineContent = { Text(entry.title.ifBlank { "Section" }) }, modifier = Modifier.clickable { jump(entry.position) }) }
+                } else {
+                    val contents = document!!.contents
+                    val current = remember(contents) { currentChapterIndex(contents, currentIndex) }
+                    // Open with the current chapter in view, one entry below the top for context.
+                    val contentsList = rememberLazyListState(initialFirstVisibleItemIndex = (current - 1).coerceAtLeast(0))
+                    LazyColumn(Modifier.fillMaxWidth().heightIn(max = 480.dp), state = contentsList) {
+                        itemsIndexed(contents) { i, entry ->
+                            val here = i == current
+                            ListItem(headlineContent = { Text(entry.title.ifBlank { "Section" }, fontWeight = if (here) FontWeight.Bold else null) },
+                                supportingContent = if (here) { { Text("You're here") } } else null,
+                                colors = if (here) ListItemDefaults.colors(containerColor = MaterialTheme.colorScheme.secondaryContainer) else ListItemDefaults.colors(),
+                                modifier = Modifier.semantics { selected = here }.clickable { jump(entry.position) })
+                        }
+                    }
                 }
             }
         }
