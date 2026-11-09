@@ -54,3 +54,57 @@ internal fun imageDisplayHeight(widthDp: Float, imageWidth: Int, imageHeight: In
 }
 data class ContentsEntry(val title: String, val position: Int)
 data class TextDocument(val blocks: List<Block>, val contents: List<ContentsEntry>)
+
+/**
+ * Streams plain text into paragraphs: blank lines end a paragraph, and a partial line waits for
+ * the next read, so words are never cut at a read boundary. Memory stays bounded by [maxParagraph].
+ */
+internal class PlainTextParagraphs(private val maxParagraph: Int = 64 * 1024, private val emit: (String) -> Unit) {
+    private val partial = StringBuilder()
+    private val lines = mutableListOf<String>()
+    private var size = 0
+
+    fun add(text: String) {
+        var start = 0
+        while (true) {
+            val newline = text.indexOf('\n', start)
+            if (newline < 0) { partial.append(text, start, text.length); break }
+            partial.append(text, start, newline)
+            line(partial.toString()); partial.setLength(0)
+            start = newline + 1
+        }
+        // A single enormous line: hand over the part before its last space and keep the rest.
+        while (partial.length > maxParagraph) {
+            var cut = partial.lastIndexOf(" ", maxParagraph).let { if (it > 0) it + 1 else maxParagraph }
+            if (Character.isHighSurrogate(partial[cut - 1])) cut--
+            line(partial.substring(0, cut)); flush()
+            partial.delete(0, cut)
+        }
+    }
+
+    fun finish() {
+        if (partial.isNotEmpty()) line(partial.toString())
+        partial.setLength(0)
+        flush()
+    }
+
+    private fun line(raw: String) {
+        val value = raw.removeSuffix("\r")
+        if (value.isBlank()) { flush(); return }
+        lines += value; size += value.length
+        if (size > maxParagraph) flush()
+    }
+
+    private fun flush() {
+        if (lines.isEmpty()) return
+        emit(joinParagraphLines(lines))
+        lines.clear(); size = 0
+    }
+}
+
+/** Joins hard-wrapped prose (most lines long) with spaces; keeps line breaks for poetry and lists. */
+internal fun joinParagraphLines(lines: List<String>): String {
+    val body = lines.dropLast(1)
+    val wrapped = body.isNotEmpty() && body.count { it.trim().length >= 50 } * 2 > body.size
+    return if (wrapped) lines.joinToString(" ") { it.trim() } else lines.joinToString("\n") { it.trimEnd() }
+}

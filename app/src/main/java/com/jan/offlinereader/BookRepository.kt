@@ -147,20 +147,20 @@ class BookRepository(private val context: Context, private val dao: ReaderDao) {
                         }
                         else -> {
                             writer.mark(title)
-                            // Fixed-size reads avoid allocating an entire huge line or book.
+                            // Fixed-size reads avoid allocating an entire huge line or book;
+                            // blank lines end paragraphs and partial lines wait for the next read.
                             file.bufferedReader(textCharset(file)).use { input ->
+                                val paragraphs = PlainTextParagraphs { writer.text(it) }
                                 val buffer = CharArray(8192)
-                                var carry = ""
                                 var first = true
                                 while (true) {
                                     val count = input.read(buffer)
-                                    if (count < 0) { writer.text(carry); break }
-                                    var text = carry + String(buffer, 0, count)
+                                    if (count < 0) break
+                                    var text = String(buffer, 0, count)
                                     if (first) { text = text.removePrefix("\uFEFF"); first = false }
-                                    carry = if (text.isNotEmpty() && Character.isHighSurrogate(text.last())) text.takeLast(1) else ""
-                                    if (carry.isNotEmpty()) text = text.dropLast(1)
-                                    writer.text(text)
+                                    paragraphs.add(text)
                                 }
+                                paragraphs.finish()
                             }
                         }
                     }
