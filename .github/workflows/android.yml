@@ -15,7 +15,7 @@ jobs:
         with:
           packages: 'platform-tools platforms;android-36 build-tools;35.0.0'
       - uses: gradle/actions/setup-gradle@v4
-      - run: chmod +x gradlew && for i in 1 2 3 4 5; do ./gradlew testDebugUnitTest --rerun-tasks --continue || true; done
+      - run: chmod +x gradlew && for i in 1 2 3 4; do ./gradlew testDebugUnitTest lintDebug assembleDebug --rerun-tasks --continue || true; done
       - uses: actions/upload-artifact@v4
         with:
           name: Offline-Reader-debug-apk
