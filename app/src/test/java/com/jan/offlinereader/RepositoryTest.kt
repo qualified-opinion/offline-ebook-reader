@@ -140,6 +140,19 @@ class RepositoryTest {
         return repository.document(book).blocks.map { repository.text(book, it) }.joinToString("")
     }
 
+    @Test fun inlinePageMarkersAndNoteTargetsDoNotSplitParagraphs() = runBlocking {
+        writeEpub("marked.epub", linkedMapOf(
+            "META-INF/container.xml" to """<container><rootfiles><rootfile full-path="OPS/package.opf"/></rootfiles></container>""",
+            "OPS/package.opf" to """<package><manifest><item id="one" href="text/one.xhtml"/><item id="nav" href="nav.xhtml" properties="nav"/></manifest><spine><itemref idref="one"/></spine></package>""",
+            "OPS/text/one.xhtml" to """<html><body><p>Before the marker <span epub:type="pagebreak" id="page12"></span>after the marker, and a <a id="note3">note target</a> too.</p><p id="next">Next paragraph.</p></body></html>""",
+            "OPS/nav.xhtml" to """<html><body><nav epub:type="toc"><a href="text/one.xhtml#page12">Page 12</a><a href="text/one.xhtml#next">Next</a></nav></body></html>"""
+        ))
+        val book = repository.import(uri("marked.epub")).book
+        val document = repository.document(book)
+        val texts = document.blocks.map { repository.text(book, it) }
+        assertEquals(listOf("Before the marker after the marker, and a note target too.", "Next paragraph."), texts)
+        assertEquals(listOf(0, 1), document.contents.map { it.position })
+    }
     @Test fun extensionlessEpubUsesProviderMimeType() = runBlocking {
         writeEpub("shared-book", linkedMapOf(
             "META-INF/container.xml" to """<container><rootfiles><rootfile full-path="book.opf"/></rootfiles></container>""",

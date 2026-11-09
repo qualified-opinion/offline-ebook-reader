@@ -330,9 +330,15 @@ private class IndexWriter(dir: File) : Closeable {
             val tag = element.normalName().substringAfter(':')
             val block = tag in setOf("p", "div", "section", "article", "blockquote", "li", "pre", "h1", "h2", "h3", "h4", "title", "subtitle", "tr")
             if (block) flush()
-            if (element.id().isNotBlank()) { flush(); anchors["$path#${element.id()}"] = blocks.size }
+            val headingTag = tag.matches(Regex("h[1-6]")) || tag == "title" || tag == "subtitle"
+            if (element.id().isNotBlank()) {
+                // Inline markers (print page numbers, note targets) point at the paragraph being built
+                // instead of splitting it; block elements were already flushed above.
+                if (headingTag && !block) flush()
+                anchors["$path#${element.id()}"] = blocks.size
+            }
             val wasHeading = heading
-            if (tag.matches(Regex("h[1-6]")) || tag == "title" || tag == "subtitle") heading = true
+            if (headingTag) heading = true
             if (tag == "img") {
                 flush()
                 image(element.attr("src"))?.let { blocks += it }
