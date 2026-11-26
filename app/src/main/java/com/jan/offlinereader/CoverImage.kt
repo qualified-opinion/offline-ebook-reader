@@ -19,7 +19,8 @@ import java.io.File
 private val libraryCovers = CoverCache()
 
 @Composable
-internal fun CoverImage(file: File, modifier: Modifier, description: String) {
+internal fun CoverImage(file: File, modifier: Modifier, description: String, contentScale: ContentScale = ContentScale.Fit,
+                        placeholder: @Composable () -> Unit = { Icon(Icons.AutoMirrored.Filled.MenuBook, description) }) {
     BoxWithConstraints(modifier, contentAlignment = Alignment.Center) {
         val density = LocalDensity.current
         val width = with(density) { maxWidth.roundToPx().coerceAtLeast(1) }
@@ -32,8 +33,8 @@ internal fun CoverImage(file: File, modifier: Modifier, description: String) {
                 catch (_: OutOfMemoryError) { value = null }
                 catch (_: Exception) { value = null }
             }
-            bitmap?.let { Image(it.asImageBitmap(), description, Modifier.fillMaxSize(), contentScale = ContentScale.Fit) }
-                ?: Icon(Icons.AutoMirrored.Filled.MenuBook, description)
+            bitmap?.let { Image(it.asImageBitmap(), description, Modifier.fillMaxSize(), contentScale = contentScale) }
+                ?: placeholder()
         }
     }
 }

@@ -52,11 +52,15 @@ uninstall the debug build, then install the signed APK and restore the backup.
   Files chosen from an unavailable cloud provider must first be downloaded in Files.
 - Imports are copied into private storage. Moving the original does not break reading.
   Identical file bytes are recognized instead of creating duplicate books.
-- Tap a book to open or resume. Scroll vertically in both EPUB and PDF.
+- The library is a bookshelf. The buttons beside **Sort** switch between covers standing on
+  wooden shelves and book spines side by side. Sort by recently read, reading status, author,
+  title or colour; the app remembers your choice.
+- Tap a cover to open or resume a book. Tap a spine, or press and hold a cover, for its details.
+  Scroll vertically in both EPUB and PDF.
 - Tap the page or the bottom chevron to show/hide controls. Controls also hide after
   a short idle period. Use the contents icon, bookmark buttons, or appearance button.
 - PDFs have page navigation and a separate pinch/pan zoom view. Tap **Done** to leave zoom.
-- Use the three-dot button on a library card to remove the imported copy and its bookmarks.
+- Use **Remove from library** in a book's details to remove the imported copy and its bookmarks.
   The original file is retained. Uninstalling the app deletes the private library.
 
 ## Export and restore a library
@@ -124,7 +128,10 @@ protect against malformed or unexpectedly huge content; they are shown as import
 - `BookRepository.kt`: private copies, import, EPUB spine/TOC parser, disk text index.
 - `TextIndex.kt`: stable text chunks and document model.
 - `ReaderViewModel.kt`: StateFlow state, import jobs, preferences and save queue.
-- `MainActivity.kt`: Compose theme and adaptive library grid.
+- `MainActivity.kt`: Compose theme and library screen.
+- `Bookshelf.kt`: bookshelf drawing (covers and spines), sort/switch controls, book details sheet.
+- `ShelfLayout.kt`: shelf sorting, grouping, spine sizes and packing, cover colour picking.
+- `BookColours.kt`: each book's main colour, from a tiny copy of its cover.
 - `ReaderScreen.kt`: reading UI, contents/bookmarks/preferences, lifecycle saving.
 - `PdfSource.kt`: serialized background PDF rendering and resource lifecycle.
 
