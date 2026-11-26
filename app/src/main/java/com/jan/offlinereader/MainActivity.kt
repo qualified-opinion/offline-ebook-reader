@@ -1,6 +1,7 @@
 package com.jan.offlinereader
 
 import android.app.Activity
+import android.content.Context
 import android.os.Bundle
 import android.view.Window
 import androidx.activity.ComponentActivity
@@ -21,6 +22,7 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalView
 import androidx.core.view.WindowCompat
 import androidx.compose.ui.text.font.FontFamily
@@ -88,6 +90,17 @@ private fun LibraryScreen(vm: ReaderViewModel) {
     val busy by vm.busy.collectAsStateWithLifecycle()
     var query by rememberSaveable { mutableStateOf("") }
     var deleting by remember { mutableStateOf<Book?>(null) }
+    var details by remember { mutableStateOf<Book?>(null) }
+    val context = LocalContext.current
+    val viewPrefs = remember { context.getSharedPreferences("library_view", Context.MODE_PRIVATE) }
+    var style by remember { mutableStateOf(ShelfStyle.entries.find { it.name == viewPrefs.getString("style", null) } ?: ShelfStyle.Covers) }
+    var sort by remember { mutableStateOf(ShelfSort.entries.find { it.name == viewPrefs.getString("sort", null) } ?: ShelfSort.Recent) }
+    // Spines and the colour sort need each book's main colour, worked out from its cover in the background.
+    val needColours = style == ShelfStyle.Spines || sort == ShelfSort.Colour
+    val colours by produceState(emptyMap<String, Int>(), books, needColours) {
+        if (needColours) value = books.associate { it.id to BookColours.load(it) }
+    }
+    val colourOf: (Book) -> Int = { colours[it.id] ?: BookColours.now(it) }
     val importer = rememberLauncherForActivityResult(ActivityResultContracts.OpenMultipleDocuments()) { if (it.isNotEmpty()) vm.import(it) }
     var libraryMenu by remember { mutableStateOf(false) }
     var restoring by rememberSaveable { mutableStateOf<android.net.Uri?>(null) }
@@ -119,40 +132,17 @@ private fun LibraryScreen(vm: ReaderViewModel) {
                 }
             } else {
                 val filtered = books.filter { it.title.contains(query, true) || it.author.contains(query, true) }
+                ShelfControls(style, sort, onStyle = { style = it; viewPrefs.edit().putString("style", it.name).apply() },
+                    onSort = { sort = it; viewPrefs.edit().putString("sort", it.name).apply() })
                 if (filtered.isEmpty()) Text("No matching books.", Modifier.padding(24.dp))
-                LazyVerticalGrid(columns = GridCells.Adaptive(155.dp), contentPadding = PaddingValues(20.dp, 12.dp, 20.dp, 104.dp), horizontalArrangement = Arrangement.spacedBy(16.dp), verticalArrangement = Arrangement.spacedBy(24.dp)) {
-                    items(filtered, key = { it.id }) { book ->
-                        Column {
-                            Card(onClick = { vm.open(book) }, enabled = !busy, shape = RoundedCornerShape(10.dp)) {
-                                Box(Modifier.fillMaxWidth().aspectRatio(.72f).background(MaterialTheme.colorScheme.surfaceVariant), contentAlignment = Alignment.Center) {
-                                    if (book.cover != null) CoverImage(File(book.directory, book.cover), Modifier.fillMaxSize(), book.title)
-                                    else Column(Modifier.padding(16.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-                                        Icon(Icons.AutoMirrored.Filled.MenuBook, null, Modifier.size(32.dp)); Spacer(Modifier.height(20.dp))
-                                        Text(book.title, fontFamily = FontFamily.Serif, fontWeight = FontWeight.Medium, maxLines = 5, overflow = TextOverflow.Ellipsis)
-                                    }
-                                    Surface(Modifier.align(Alignment.BottomStart).padding(8.dp), shape = RoundedCornerShape(4.dp), color = MaterialTheme.colorScheme.background.copy(alpha = .9f)) { Text(book.format, Modifier.padding(5.dp), style = MaterialTheme.typography.labelSmall) }
-                                }
-                            }
-                            Row(verticalAlignment = Alignment.CenterVertically) {
-                                Text(book.title, Modifier.weight(1f).padding(top = 10.dp), maxLines = 2, overflow = TextOverflow.Ellipsis, style = MaterialTheme.typography.titleSmall)
-                                Box {
-                                    var bookMenu by remember { mutableStateOf(false) }
-                                    IconButton(onClick = { bookMenu = true }, modifier = Modifier.size(36.dp)) { Icon(Icons.Default.MoreVert, "More options for ${book.title}") }
-                                    DropdownMenu(expanded = bookMenu, onDismissRequest = { bookMenu = false }) {
-                                        DropdownMenuItem(text = { Text("Remove from library") }, leadingIcon = { Icon(Icons.Default.DeleteOutline, null) },
-                                            onClick = { bookMenu = false; deleting = book })
-                                    }
-                                }
-                            }
-                            if (book.author.isNotBlank()) Text(book.author, maxLines = 1, overflow = TextOverflow.Ellipsis, style = MaterialTheme.typography.bodySmall)
-                            Spacer(Modifier.height(8.dp))
-                            LinearProgressIndicator(progress = { book.progress }, modifier = Modifier.fillMaxWidth().height(3.dp))
-                            Text(readingStatus(book), Modifier.padding(top = 5.dp), style = MaterialTheme.typography.labelSmall)
-                        }
-                    }
-                }
+                else Bookshelf(arrangeShelves(filtered, sort, colourOf), style, colourOf, enabled = !busy,
+                    onOpen = { vm.open(it) }, onDetails = { details = it })
             }
         }
+    }
+    details?.let { book ->
+        BookSheet(book, colourOf(book), enabled = !busy, onDismiss = { details = null },
+            onOpen = { details = null; vm.open(book) }, onRemove = { details = null; deleting = book })
     }
     restoring?.let { uri -> AlertDialog(onDismissRequest = { restoring = null }, title = { Text("Restore library?") },
         text = { Text("Add missing books. For matching books, keep the most recently saved reading position and merge bookmarks. Reading preferences are replaced by the backup's. Other books stay. Export your current library first to keep a copy.") },

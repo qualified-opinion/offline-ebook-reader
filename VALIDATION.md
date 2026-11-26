@@ -100,6 +100,7 @@ uninstall/fresh-install check; uninstalling deletes the private library.
 - [ ] Add bookmarks in different EPUB chapters; new labels show chapter names and progress. PDF labels still show page numbers; existing labels remain unchanged. Jump to/delete bookmarks and reopen.
 - [ ] Change font size, spacing and each theme, then relaunch.
 - [ ] With the phone in light mode, select Dark paper and return to the library; clock/battery icons remain readable. With the phone in dark mode, test Light and Sepia paper.
+- [ ] Library bookshelf: switch covers/spines and each sort; the choice is kept after closing the app. Spines show a bookmark on books being read; tap a spine and long-press a cover for details; remove a book from the details sheet. Check Sepia, Light and Dark paper.
 - [ ] Rotate on a phone and tablet; check comfortable margins and library columns. Reflow may shift the visual line while retaining the saved passage.
 - [ ] Hide the toolbar, wait, and bring it back using the chevron or a page tap.
 - [ ] Delete an original source file and confirm the imported book still reads offline.
